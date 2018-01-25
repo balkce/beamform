@@ -1,0 +1,17 @@
+verbose: true
+initial_angle: 10.0
+
+#reference
+#mic0: {id: 0, x: 0.0, y: 0.0}
+#mic1: {id: 1, x: 0.0, y: 0.0}
+#mic2: {id: 2, x: 0.0, y: 0.0}
+
+#aira
+mic0: {id: 0, x: 0.0, y: 0.0}
+mic1: {id: 1, x: 0.0, y: -0.18}
+mic2: {id: 2, x: -0.155884573, y: -0.09}
+
+#test bench
+#mic0: {id: 0, x: 0.0, y: 0.0}
+#mic1: {id: 1, x: 0.0, y: -0.215}
+#mic2: {id: 2, x: -0.16, y: -0.1075}

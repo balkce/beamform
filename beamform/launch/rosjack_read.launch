@@ -1,0 +1,6 @@
+<launch>
+  <node name="rosjack_read" pkg="beamform" type="rosjack_read" output="screen">
+    <rosparam command="load" file="$(find beamform)/rosjack_config.yaml" />
+    <rosparam command="load" file="$(find beamform)/beamform_config.yaml" />
+  </node>
+</launch>
