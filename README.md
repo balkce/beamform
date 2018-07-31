@@ -7,6 +7,7 @@ Included beamformers:
 * das_time: Delay-and-Sum in time domain
 * das: Delay-and-Sum in frequency domain
 * mvdr: Minimum Variance Distortionless Response
+* phase: Phase-based binary masking
 
 Two YAML files are required to be configured:
 * rosjack_config.yaml: verbosity and type of output (through only JACK, only ROS, or both)
