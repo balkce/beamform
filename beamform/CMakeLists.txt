@@ -12,7 +12,10 @@ find_package(cmake_modules REQUIRED) # for Eigen
 find_package(Eigen REQUIRED)
 
 catkin_package(
+#  INCLUDE_DIRS include
+#  LIBRARIES beamform
  CATKIN_DEPENDS roscpp rospy std_msgs jack_msgs
+#  DEPENDS system_lib
 )
 
 INCLUDE(FindPkgConfig)
@@ -40,6 +43,7 @@ add_executable(beamform src/beamform.cpp)
 add_executable(rosjack_write src/jack_write.cpp)
 add_executable(rosjack_read src/jack_read.cpp)
 add_executable(rosjack_ref src/jack_ref.cpp)
+add_executable(phase src/phase.cpp)
 
 target_link_libraries(rosjack
   ${JACK_LIBRARIES}
@@ -85,3 +89,10 @@ target_link_libraries(rosjack_ref
   ${FFTW_LIBRARIES}
   ${catkin_LIBRARIES}
 )
+
+target_link_libraries(phase
+  rosjack
+  ${FFTW_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+

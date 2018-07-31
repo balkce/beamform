@@ -1,5 +1,5 @@
 verbose: true
-initial_angle: 10.0
+initial_angle: 0.0
 
 #reference
 #mic0: {id: 0, x: 0.0, y: 0.0}
