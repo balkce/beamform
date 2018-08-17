@@ -17,11 +17,12 @@ The direction of interest of all beamformers can be changed on-the-fly by writin
 
 Note for MVDR: it uses only a small portion of the frequencies for speed. It decides which frequencies to use upon a hardcoded frequency range and basic enery thresholding.
 
-Note for audio file: the audio file is 16-bit WAV file with the sample rate with which the JACK server is configured. If the file path in rosjack_config.yaml is empty, the default path will be used: /home/user/rosjack_write_file.wav.
+Note for audio file: the audio file is a 16-bit WAV file with the sample rate with which the JACK server is configured. If the file path in rosjack_config.yaml is empty, the default path will be used: /home/user/rosjack_write_file.wav.
 
 ## Dependencies
 Packages that can be installed trough apt official repositories:
 * libjack-jackd2-dev: JACK development libraries
 * libfftw3-dev: a very fast FFT C/C++ implementation
 * libeigen3-dev: lightweight linear algebra library
+* libsndfile1-dev: library to read and write audio files
 
