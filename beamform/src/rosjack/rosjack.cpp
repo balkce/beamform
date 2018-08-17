@@ -25,6 +25,36 @@ void rosjack_handle_params(ros::NodeHandle *n){
 		auto_connect = true;
 		ROS_WARN("Auto connect argument not found in ROS param server, using default value (%d).",auto_connect);
 	}
+	
+	if ((*n).getParam(node_name+"/write_file",write_file)){
+		ROS_INFO("Write to file: %d",write_file);
+		if(write_file){
+			std::string write_file_path;
+			if ((*n).getParam(node_name+"/write_file_path",write_file_path)){
+				if(write_file_path.empty()){
+					if ((audio_file_path = getenv("HOME")) == NULL) {
+						audio_file_path = getpwuid(getuid())->pw_dir;
+					}
+					strcat(audio_file_path,(char *)"/rosjack_write_file.wav");
+					ROS_WARN("File path argument found in ROS param server is empty, using default value (%s).",audio_file_path);
+				}else{
+					audio_file_path = (char*)malloc(sizeof(char)*FILENAME_MAX);
+					strcpy(audio_file_path,write_file_path.c_str());
+					ROS_INFO("File path: %s",audio_file_path);
+				}
+			}else{
+				if ((audio_file_path = getenv("HOME")) == NULL) {
+					audio_file_path = getpwuid(getuid())->pw_dir;
+				}
+				strcat(audio_file_path,(char *)"/rosjack_write_file.wav");
+				ROS_WARN("File path argument not found in ROS param server, using default value (%s).",audio_file_path);
+			}
+		}
+	}else{
+		write_file = false;
+		ROS_WARN("Write to file argument not found in ROS param server, using default value (%d).",write_file);
+	}
+	
 }
 
 void jack_shutdown (void *arg){
@@ -100,6 +130,25 @@ int rosjack_create (int rosjack_type, ros::NodeHandle *n, const char *topic_name
 		return 1;
 	}
 	
+	if(write_file){
+		printf("Writing jack output in: %s\n",audio_file_path);
+		
+		audio_info.samplerate = rosjack_sample_rate;
+		audio_info.channels = 1;
+		audio_info.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+		audio_file = sf_open (audio_file_path,SFM_WRITE,&audio_info);
+		if(audio_file == NULL){
+			printf("WARNING: Could not open file for writing output, with error: %s\n",sf_strerror(NULL));
+			printf("WARNING: Continuing without file output.\n");
+			write_file = false;
+		}else{
+			printf("Audio file info:\n");
+			printf("\tSample Rate: %d\n",audio_info.samplerate);
+			printf("\tChannels: %d\n",audio_info.channels);
+			printf("\tFormat: WAV, PCM 16-bit\n");
+			write_file_buffer = (float *)malloc(rosjack_window_size*sizeof(float));
+		}
+	}
 	
 	if(rosjack_type == ROSJACK_WRITE){
 		ros2jack_buffer_size = jack_get_buffer_size (jack_client)*10;
@@ -145,19 +194,21 @@ int rosjack_create (int rosjack_type, ros::NodeHandle *n, const char *topic_name
 		free (serverports_names);
 	}
 	
-	// Find possible input server port names
-	serverports_names = jack_get_ports (jack_client, NULL, NULL, JackPortIsPhysical|JackPortIsInput);
-	if (serverports_names == NULL) {
-		printf("No available physical playback (server input) ports.\n");
-		return 1;
+	if(output_type != ROSJACK_OUT_ROS){
+		// Find possible input server port names
+		serverports_names = jack_get_ports (jack_client, NULL, NULL, JackPortIsPhysical|JackPortIsInput);
+		if (serverports_names == NULL) {
+			printf("No available physical playback (server input) ports.\n");
+			return 1;
+		}
+		// Connect the first available to our output port
+		if (jack_connect (jack_client, jack_port_name (jack_output_port), serverports_names[0])) {
+			printf("Cannot connect output port.\n");
+			return 1;
+		}
+		// free serverports_names variable for reuse in next part of the code
+		free (serverports_names);
 	}
-	// Connect the first available to our output port
-	if (jack_connect (jack_client, jack_port_name (jack_output_port), serverports_names[0])) {
-		printf("Cannot connect output port.\n");
-		return 1;
-	}
-	// free serverports_names variable for reuse in next part of the code
-	free (serverports_names);
 	
 	
 	if(rosjack_type == ROSJACK_WRITE){
@@ -172,6 +223,11 @@ void siginthandler(int sig){
 	ROS_INFO("Closing JACK client.");
 	jack_client_close (jack_client);
 	
+	if(write_file){
+		ROS_INFO("Closing file output.");
+		sf_close(audio_file);
+	}
+	
 	ROS_INFO("Closing ROS node.");
 	ros::shutdown();
 }
@@ -184,43 +240,49 @@ void output_to_rosjack (rosjack_data *data, int data_length, int out_type){
 	output_type = out_type;
 	output_to_rosjack (data, data_length);
 }
+
 void output_to_rosjack (rosjack_data *data, int data_length){
 	/* This may seem as too much code repetition, but it's quicker this way online */
-	/* The enclosing brackets in the switch are necessary to avoid re-definition errors */
-	
+	/* The enclosing brackets in the switch cases are necessary to avoid re-definition errors */
+	int j;
 	switch(output_type){
 		case ROSJACK_OUT_BOTH:{
-				jack_msgs::JackAudio out;
-				out.size = data_length;
- 				ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
-				out.header.stamp = win_stamp;
-				rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
-				
-				for (int j = 0; j < data_length; j++){
-					out.data.push_back(data[j]);
-					out_j[j] = data[j];
-				}
-				rosjack_out.publish(out);
-			}break;
+			jack_msgs::JackAudio out;
+			out.size = data_length;
+			ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+			out.header.stamp = win_stamp;
+			rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
+			for (j = 0; j < data_length; ++j){
+				out.data.push_back(data[j]);
+				out_j[j] = data[j];
+			}
+			rosjack_out.publish(out);
+		}break;
 		
 		case ROSJACK_OUT_JACK:{
-				rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
-				
-				for (int j = 0; j < data_length; j++){
-					out_j[j] = data[j];
-				}
-			}break;
+			rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
+			for (j = 0; j < data_length; ++j){
+				out_j[j] = data[j];
+			}
+		}break;
 		
 		case ROSJACK_OUT_ROS:{
-				jack_msgs::JackAudio out;
-				out.size = data_length;
- 				ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
-				out.header.stamp = win_stamp;
-				for (int j = 0; j < data_length; j++){
-					out.data.push_back(data[j]);
-				}
-				rosjack_out.publish(out);
-			}break;
+			jack_msgs::JackAudio out;
+			out.size = data_length;
+			ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+			out.header.stamp = win_stamp;
+			for (j = 0; j < data_length; ++j){
+				out.data.push_back(data[j]);
+			}
+			rosjack_out.publish(out);
+		}break;
+	}
+	
+	if(write_file){
+		for (j = 0; j < data_length; ++j){
+			write_file_buffer[j] = data[j];
+		}
+		write_file_count = sf_write_float(audio_file,write_file_buffer,data_length);
 	}
 }
 

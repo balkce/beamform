@@ -23,6 +23,7 @@ pkg_check_modules (GLIB2 glib-2.0)
 pkg_check_modules (JACK jack)
 pkg_check_modules (FFTW fftw3)
 pkg_check_modules (EIGEN eigen)
+pkg_check_modules (SNDFILE sndfile)
 
 include_directories(
   src/rosjack
@@ -30,6 +31,7 @@ include_directories(
   ${JACK_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
   ${EIGEN_INCLUDE_DIRS}
+  ${SNDFILE_INCLUDE_DIRS}
 )
 
 add_library(rosjack
@@ -47,6 +49,7 @@ add_executable(phase src/phase.cpp)
 
 target_link_libraries(rosjack
   ${JACK_LIBRARIES}
+  ${SNDFILE_LIBRARIES}
   ${catkin_LIBRARIES}
 )
 add_dependencies(rosjack ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})

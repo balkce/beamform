@@ -10,12 +10,14 @@ Included beamformers:
 * phase: Phase-based binary masking
 
 Two YAML files are required to be configured:
-* rosjack_config.yaml: verbosity and type of output (through only JACK, only ROS, or both)
+* rosjack_config.yaml: verbosity, type of output (through only JACK, only ROS, or both), and if the beamform output should be stored in an audio file.
 * beamform_config.yaml: used by all beamformers, verbosity, initial direction of interest and microphone positions (required to named as "mic0", "mic1", "mic2", ..., "mic10", etc.).
 
 The direction of interest of all beamformers can be changed on-the-fly by writing to the topic /theta of type std::Float32 (0 is front, -90 is left, 90 is right, 180 is back).
 
 Note for MVDR: it uses only a small portion of the frequencies for speed. It decides which frequencies to use upon a hardcoded frequency range and basic enery thresholding.
+
+Note for audio file: the audio file is 16-bit WAV file with the sample rate with which the JACK server is configured. If the file path in rosjack_config.yaml is empty, the default path will be used: /home/user/rosjack_write_file.wav.
 
 ## Dependencies
 Packages that can be installed trough apt official repositories:

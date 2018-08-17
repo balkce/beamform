@@ -3,3 +3,5 @@ output_type: 0
 # 0 BOTH
 # 1 ONLY JACK
 # 2 ONLY ROS
+write_file: false
+write_file_path: ''

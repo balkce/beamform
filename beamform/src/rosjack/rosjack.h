@@ -6,10 +6,15 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <signal.h>
+#include <sys/types.h>
+#include <pwd.h>
 #include <mutex>
 
 #include <jack/jack.h>
+
+#include <sndfile.h>
 
 /*** ROS libraries ***/
 #include "ros/ros.h"
@@ -25,6 +30,13 @@
 
 #define ROSJACK_READ 0
 #define ROSJACK_WRITE 1
+
+//sndfile stuff
+char *audio_file_path;
+SNDFILE * audio_file;
+SF_INFO audio_info;
+float *write_file_buffer;
+int write_file_count;
 
 const char *ROSJACK_OUT_OUTPUT_TYPES[] = {
   "ROSJACK_OUT_BOTH",
@@ -45,6 +57,7 @@ ros::Subscriber rosjack_in;
 std::mutex jack_mtx;
 
 bool auto_connect = true;
+bool write_file = true;
 
 rosjack_data *ros2jack_buffer;
 unsigned int  ros2jack_buffer_size;
