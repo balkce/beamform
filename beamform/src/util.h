@@ -14,6 +14,7 @@ std::complex<double> M_I(0,1);
 double v_sound = 343;
 double rad2deg = 180.0/PI;
 double deg2rad = PI/180.0;
+char *home_path;
 
 //global variables
 bool verbose;
@@ -23,6 +24,10 @@ std::vector< std::map<std::string,double> > array_geometry;
 
 
 void handle_params(ros::NodeHandle *n){
+    if ((home_path = getenv("HOME")) == NULL) {
+        home_path = getpwuid(getuid())->pw_dir;
+    }
+    
     std::string node_name = ros::this_node::getName();
     std::cout << "ROS Node name: " << node_name << std::endl;
     

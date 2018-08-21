@@ -31,8 +31,10 @@
 #define ROSJACK_READ 0
 #define ROSJACK_WRITE 1
 
+char *rosjack_home_path;
+
 //sndfile stuff
-char *audio_file_path;
+char audio_file_path[FILENAME_MAX];
 SNDFILE * audio_file;
 SF_INFO audio_info;
 float *write_file_buffer;
@@ -57,7 +59,10 @@ ros::Subscriber rosjack_in;
 std::mutex jack_mtx;
 
 bool auto_connect = true;
-bool write_file = true;
+bool write_file = false;
+bool write_xrun = false;
+
+unsigned int xruns_count = 0;
 
 rosjack_data *ros2jack_buffer;
 unsigned int  ros2jack_buffer_size;
@@ -68,6 +73,7 @@ unsigned int rosjack_sample_rate = 0;
 
 void rosjack_handle_params(ros::NodeHandle *n);
 void jack_shutdown (void *arg);
+int jack_xrun (void *arg);
 void rosjack_roscallback(const jack_msgs::JackAudio::ConstPtr& msg);
 int rosjack_create (int rosjack_type, ros::NodeHandle *n, const char *topic_name, const char *client_name, int input_number, int (*callback_function)(jack_nframes_t, void*));
 void close_rosjack();

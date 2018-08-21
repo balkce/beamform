@@ -1,0 +1,7 @@
+<launch>
+  <node name="beamform" pkg="beamform" type="gsc" output="screen">
+    <rosparam command="load" file="$(find beamform)/rosjack_config.yaml" />
+    <rosparam command="load" file="$(find beamform)/beamform_config.yaml" />
+    <rosparam command="load" file="$(find beamform)/gsc_config.yaml" />
+  </node>
+</launch>

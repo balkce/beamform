@@ -1,0 +1,6 @@
+use_vad: false
+vad_threshold: 0.1
+mu0: 0.0005
+mu_max: 0.1
+filter_size: 128
+write_mu: false
