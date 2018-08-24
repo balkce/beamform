@@ -189,7 +189,7 @@ int jack_callback (jack_nframes_t nframes, void *arg){
         
         //doing overlap and storing in output
         for(j = 0; j < nframes; j++)
-            out[j] = out_buff1[j+(nframes*2)] + out_buff2[j+nframes];
+            out[j] = (out_buff1[j+(nframes*2)] + out_buff2[j+nframes])/2;
         
         //storing filtered output to out_buff1 for overlap purposes
         out_aux = out_buff2;

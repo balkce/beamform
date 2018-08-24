@@ -283,6 +283,9 @@ void output_to_rosjack (rosjack_data *data, int data_length){
       for (j = 0; j < data_length; ++j){
         out.data.push_back(data[j]);
         out_j[j] = data[j];
+        if(fabs(data[j]) >= 1.0){
+          ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data[j]));
+        }
       }
       rosjack_out.publish(out);
     }break;
@@ -291,6 +294,9 @@ void output_to_rosjack (rosjack_data *data, int data_length){
       rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
       for (j = 0; j < data_length; ++j){
         out_j[j] = data[j];
+        if(fabs(data[j]) >= 1.0){
+          ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data[j]));
+        }
       }
     }break;
     
@@ -301,6 +307,9 @@ void output_to_rosjack (rosjack_data *data, int data_length){
       out.header.stamp = win_stamp;
       for (j = 0; j < data_length; ++j){
         out.data.push_back(data[j]);
+        if(fabs(data[j]) >= 1.0){
+          ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data[j]));
+        }
       }
       rosjack_out.publish(out);
     }break;

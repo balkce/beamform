@@ -122,7 +122,7 @@ int jack_callback (jack_nframes_t nframes, void *arg){
         
         //doing overlap and storing in output
         for(j = 0; j < nframes; j++)
-            out[j] = out_buff1[j+(nframes*2)] + out_buff2[j+nframes];
+            out[j] = (out_buff1[j+(nframes*2)] + out_buff2[j+nframes])/2;
         
         //storing filtered output to out_buff1 for overlap purposes
         memcpy(out_buff1, out_buff2,sizeof(rosjack_data)*fft_win);
@@ -186,12 +186,12 @@ int main (int argc, char *argv[]) {
     for (i = 0; i < fft_win; i++){
         hann_win[i] = hann(i, fft_win);
     }
-    out_buff1 = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
-    out_buff2 = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
+    out_buff1 = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+    out_buff2 = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     
     in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; i++){
-        in_buff[i] = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
+        in_buff[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     }
     
     freqs = (double *)malloc(sizeof(double)*fft_win);

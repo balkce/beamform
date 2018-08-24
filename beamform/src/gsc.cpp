@@ -91,7 +91,8 @@ rosjack_data * apply_weights (rosjack_data *in, int mic){
 
     // applying weights per frequency
     for(i = 0; i < fft_win; i++){
-        x_fft[i] *= conj(weights[mic][i]); 
+        x_fft[i] *= conj(weights[mic][i]);
+        //x_fft[i] /= number_of_microphones;
     }
 
     // ifft
@@ -122,7 +123,7 @@ rosjack_data calculate_power(rosjack_data *buf, int size){
   for(int i = 0; i < size; i++){
     p += buf[i]*buf[i];
   }
-  return p;
+  return sqrt(p/size);
 }
 
 int jack_callback (jack_nframes_t nframes, void *arg){
@@ -155,7 +156,7 @@ int jack_callback (jack_nframes_t nframes, void *arg){
           
           //applying overlap and add per microphone
           for(j = 0; j < nframes; j++)
-            overlap_out[i][j] = (in_overlap[i][j+(nframes*2)] + aux[i][j+nframes]);
+            overlap_out[i][j] = (in_overlap[i][j+(nframes*2)] + aux[i][j+nframes])/2;
         }
         
         //doing GSC for each sample
@@ -185,7 +186,7 @@ int jack_callback (jack_nframes_t nframes, void *arg){
           shift_data(out[j],last_outputs,filter_size);
           last_out_power = calculate_power(last_outputs,filter_size);
           
-          if((sqrt(last_out_power/filter_size) < vad_threshold) || (!use_vad)){
+          if(last_out_power < vad_threshold || (!use_vad)){
             //updating filter G for next sample
             for (i = 0; i < number_of_microphones-1; i++){
               block_power = calculate_power(block_matrix[i],filter_size);
@@ -346,17 +347,17 @@ int main (int argc, char *argv[]) {
     in_overlap = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     in_overlap2 = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; i++){
-        in_overlap[i] = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
-        in_overlap2[i] = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
+        in_overlap[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+        in_overlap2[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     }
     
     block_matrix = (rosjack_data **) malloc (sizeof(rosjack_data*)*(number_of_microphones-1));
     filter = (rosjack_data **) malloc (sizeof(rosjack_data*)*(number_of_microphones-1));
     for (i = 0; i < number_of_microphones-1; i++){
-        block_matrix[i] = (rosjack_data *) malloc (sizeof(rosjack_data)*filter_size);
-        filter[i] = (rosjack_data *) malloc (sizeof(rosjack_data)*filter_size);
+        block_matrix[i] = (rosjack_data *) calloc (filter_size,sizeof(rosjack_data));
+        filter[i] = (rosjack_data *) calloc (filter_size,sizeof(rosjack_data));
     }
-    last_outputs = (rosjack_data *) malloc (sizeof(rosjack_data)*filter_size);
+    last_outputs = (rosjack_data *) calloc (filter_size,sizeof(rosjack_data));
     
     freqs = (double *)malloc(sizeof(double)*fft_win);
     for(i = 0; i<fft_win/2;i++){
