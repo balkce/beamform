@@ -28,7 +28,14 @@ Eigen::MatrixXcd weights;
 double *delays;
 double *phases_aligned;
 
+double min_mag = 0.0001;
+double min_phase = 10;
 double min_phase_diff_mean = 10*M_PI/180;
+int past_masks_num = 10;
+
+//past fft masks in mags and phase
+double **past_mags;
+double **past_phas;
 
 //reused buffer
 rosjack_data **in_buff;
@@ -38,6 +45,13 @@ Eigen::MatrixXcd in_fft;
 
 double hann(unsigned int buffer_i, unsigned int buffer_size){
     return 0.5 - 0.5*cos(2*PI*buffer_i/(buffer_size-1));
+}
+
+void shift_data(double data, double *buf, int size){
+  for(int i = 1; i < size; i++){
+    buf[i-1] = buf[i];
+  }
+  buf[size-1] = data;
 }
 
 void update_weights(bool ini=false){
@@ -129,15 +143,17 @@ void apply_weights (rosjack_data **in){
         phase_diff_sum = get_overall_phase_diff(0,&phase_diff_num);
         phase_diff_mean = phase_diff_sum/(double)phase_diff_num;
         
-        if (phase_diff_mean < min_phase_diff_mean){
+        if (phase_diff_mean < min_phase_diff_mean && abs(in_fft(0,j))/fft_win > min_mag){
             //if below threshold, create new frequency data bin
             
             //from mean magnitude
             mag_mean = 0;
             for(i = 0; i < number_of_microphones; i++){
-                mag_mean += abs(in_fft(i,j));;
+                mag_mean += abs(in_fft(i,j));
             }
             mag_mean /= number_of_microphones;
+            shift_data(1.0, past_mags[j],past_masks_num);
+            mag_mean *= get_mean(past_mags[j],past_masks_num);
             
             //and from mean phase (should be close to 0)
             pha_mean = 0;
@@ -145,6 +161,8 @@ void apply_weights (rosjack_data **in){
                 pha_mean += arg(in_fft(i,j));
             }
             pha_mean /= number_of_microphones;
+            shift_data(1.0, past_phas[j],past_masks_num);
+            pha_mean *= get_mean(past_phas[j],past_masks_num);
             
             //TODO: maybe this can be carried out in a quicker way
             y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
@@ -155,6 +173,8 @@ void apply_weights (rosjack_data **in){
             //      smoothing: no discernable better results
             //      SNR-based masking: ...
             y_fft[j] = 0.0;
+            shift_data(0.0, past_mags[j],past_masks_num);
+            shift_data(0.0, past_phas[j],past_masks_num);
         }
     }
     
@@ -221,6 +241,36 @@ void theta_roscallback(const std_msgs::Float32::ConstPtr& msg){
     update_weights();
 }
 
+void phase_handle_params(ros::NodeHandle *n){
+    std::string node_name = ros::this_node::getName();
+    std::cout << "Phase ROS parameters: " << std::endl;
+    
+    if ((*n).getParam(node_name+"/min_phase",min_phase)){
+        ROS_INFO("Min Phase Threshold: %f",min_phase);
+    }else{
+        min_phase = 10.0;
+        ROS_WARN("Min Phase Threshold argument not found in ROS param server, using default value (%f).",min_phase);
+    }
+    min_phase_diff_mean = min_phase*M_PI/180;
+    
+    if ((*n).getParam(node_name+"/min_mag",min_mag)){
+        ROS_INFO("Min Mag Threshold: %f",min_mag);
+    }else{
+        min_mag = 10.0;
+        ROS_WARN("Min Mag Threshold argument not found in ROS param server, using default value (%f).",min_mag);
+    }
+    
+    if ((*n).getParam(node_name+"/past_masks_num",past_masks_num)){
+        ROS_INFO("Number of Past Masks: %d",past_masks_num);
+        if(past_masks_num < 1){
+          past_masks_num = 20;
+          ROS_WARN("Invalid Number of Past Masks argument, using default value (%d).",past_masks_num);
+        }
+    }else{
+        past_masks_num = 20;
+        ROS_WARN("Number of Past Masks argument not found in ROS param server, using default value (%d).",past_masks_num);
+    }
+}
 
 int main (int argc, char *argv[]) {
     const char *client_name = "beamform";
@@ -229,6 +279,7 @@ int main (int argc, char *argv[]) {
     ros::init(argc, argv, client_name);
     ros::NodeHandle n;
     handle_params(&n);
+    phase_handle_params(&n);
     
     ros::Subscriber theta_subscriber = n.subscribe("theta", 1000, theta_roscallback);
     
@@ -255,18 +306,25 @@ int main (int argc, char *argv[]) {
     for (i = 0; i < fft_win; i++){
         hann_win[i] = hann(i, fft_win);
     }
-    out_buff1 = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
-    out_buff2 = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
+    out_buff1 = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+    out_buff2 = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     
     in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; i++){
-        in_buff[i] = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
+        in_buff[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     }
     
     freqs = (double *)malloc(sizeof(double)*fft_win);
     for(i = 0; i<fft_win/2;i++){
         freqs[i] = ((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
         freqs[fft_win-1-i] = -((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
+    }
+    
+    past_mags = (double **) malloc (sizeof(double*)*fft_win);
+    past_phas = (double **) malloc (sizeof(double*)*fft_win);
+    for (i = 0; i < fft_win; i++){
+        past_mags[i] = (double *) calloc (past_masks_num,sizeof(double));
+        past_phas[i] = (double *) calloc (past_masks_num,sizeof(double));
     }
     
     delays = (double *) malloc (sizeof(double)*number_of_microphones);

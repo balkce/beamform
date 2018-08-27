@@ -9,7 +9,7 @@ void rosjack_handle_params(ros::NodeHandle *n){
   }
   
   std::string node_name = ros::this_node::getName();
-  std::cout << "ROS Node name: " << node_name << std::endl;
+  std::cout << "JACK ROS parameters: " << node_name << std::endl;
   
   if ((*n).getParam(node_name+"/output_type",output_type)){
     if (output_type >=0 && output_type < ROSJACK_OUT_ENUM){

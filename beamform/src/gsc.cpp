@@ -256,7 +256,7 @@ void theta_roscallback(const std_msgs::Float32::ConstPtr& msg){
 
 void gsc_handle_params(ros::NodeHandle *n){
     std::string node_name = ros::this_node::getName();
-    std::cout << "ROS Node name: " << node_name << std::endl;
+    std::cout << "GSC ROS parameters: " << std::endl;
     
     if ((*n).getParam(node_name+"/use_vad",use_vad)){
         ROS_INFO("Use VAD: %d",use_vad);

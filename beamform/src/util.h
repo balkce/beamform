@@ -30,6 +30,7 @@ void handle_params(ros::NodeHandle *n){
     
     std::string node_name = ros::this_node::getName();
     std::cout << "ROS Node name: " << node_name << std::endl;
+    std::cout << "Beamform ROS parameters: " << std::endl;
     
     if ((*n).getParam(node_name+"/verbose",verbose)){
         ROS_INFO("Verbose: %d",verbose);
