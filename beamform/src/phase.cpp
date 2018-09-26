@@ -143,38 +143,33 @@ void apply_weights (rosjack_data **in){
         phase_diff_sum = get_overall_phase_diff(0,&phase_diff_num);
         phase_diff_mean = phase_diff_sum/(double)phase_diff_num;
         
-        if (phase_diff_mean < min_phase_diff_mean && abs(in_fft(0,j))/fft_win > min_mag){
-            //if below threshold, create new frequency data bin
-            
-            //from mean magnitude
-            mag_mean = 0;
-            for(i = 0; i < number_of_microphones; i++){
-                mag_mean += abs(in_fft(i,j));
-            }
-            mag_mean /= number_of_microphones;
-            shift_data(1.0, past_mags[j],past_masks_num);
-            mag_mean *= get_mean(past_mags[j],past_masks_num);
-            
-            //and from mean phase (should be close to 0)
-            pha_mean = 0;
-            for(i = 0; i < number_of_microphones; i++){
-                pha_mean += arg(in_fft(i,j));
-            }
-            pha_mean /= number_of_microphones;
-            shift_data(1.0, past_phas[j],past_masks_num);
-            pha_mean *= get_mean(past_phas[j],past_masks_num);
-            
-            //TODO: maybe this can be carried out in a quicker way
+        //creating new frequency data bin from mean magnitude
+        mag_mean = 0;
+        for(i = 0; i < number_of_microphones; i++){
+            mag_mean += abs(in_fft(i,j));
+        }
+        mag_mean /= number_of_microphones;
+        
+        //and from the phase of the reference microphone
+        pha_mean = arg(in_fft(0,j));
+        shift_data(pha_mean, past_phas[j],past_masks_num);
+        
+        if (phase_diff_mean < min_phase_diff_mean){
+            //if below threshold, use the new frequency data bin
             y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
-        }else{
-            //if not below threshold, nullify data bin
             
-            //TODO: this may create artifacts, since it's introducing binary masking
-            //      smoothing: no discernable better results
-            //      SNR-based masking: ...
-            y_fft[j] = 0.0;
-            shift_data(0.0, past_mags[j],past_masks_num);
-            shift_data(0.0, past_phas[j],past_masks_num);
+            //and store its magnitude for smoothing if need be
+            shift_data(mag_mean, past_mags[j],past_masks_num);
+        }else{
+            //if not below threshold, reduce data bin energy by min_mag
+            shift_data(mag_mean*min_mag, past_mags[j],past_masks_num);
+            
+            //use an average smoothing mechanism to reduce "burps"
+            mag_mean = get_mean(past_mags[j],past_masks_num);
+            
+            //use the smoothened magnitude to create an almost nullified
+            //frequency data bin
+            y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
         }
     }
     

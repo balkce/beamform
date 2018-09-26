@@ -5,7 +5,7 @@
     <rosparam>
       min_phase: 15.0
       min_mag: 0.0001
-      past_masks_num: 1
+      past_masks_num: 2
     </rosparam>
   </node>
 </launch>

@@ -20,7 +20,7 @@ Note for MVDR: it uses only a small portion of the frequencies for speed. It dec
 
 Note for GSC: it uses a dynamic mu that changes depending on the current sample SNR. To facilitate it's configuration, the gsc.launch file includes the values for the starting mu, the maximum mu, the filter size, if a VAD should be used (and its accompanying VAD threshold), and if the behavior of the mu value should be stored in an external text file (/home/user/mu_behavior.txt).
 
-Note for Phase: it process the weight of each frequency bin by a averaging several past binary masks. To facilitate it's configuration, the phase.launch file includes the values for minimum phase and magnitude, and the number of past masks.
+Note for Phase: it process the weight of each frequency bin by considering if the phase is below a threshold; if not, it averages several past magnitudes and multiplies them by a factor to reduce the presence of not-in-phase interferences. To facilitate it's configuration, the phase.launch file includes the values for minimum phase and magnitude factor, and the number of past windows.
 
 Note for audio file: the audio file is a 16-bit WAV file with the sample rate with which the JACK server is configured. If the file path in rosjack_config.yaml is empty, the default path will be used: /home/user/rosjack_write_file.wav.
 
