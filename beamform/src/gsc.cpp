@@ -34,11 +34,13 @@ rosjack_data last_avg_mu = 0.0;
 double *hann_win;
 double *freqs;
 unsigned int fft_win;
+unsigned int buf_win;
 std::complex<double> **weights;
 double *delays;
 
-rosjack_data **in_overlap;
-rosjack_data **in_overlap2;
+rosjack_data **in_buff;
+rosjack_data *out_buff1;
+rosjack_data *out_buff2;
 
 double hann(unsigned int buffer_i, unsigned int buffer_size){
     return 0.5 - 0.5*cos(2*PI*buffer_i/(buffer_size-1));
@@ -80,12 +82,12 @@ void update_weights(bool ini=false){
     }
 }
 
-rosjack_data * apply_weights (rosjack_data *in, int mic){
+void apply_weights (rosjack_data *in, rosjack_data *out, unsigned int time_ini, int mic){
     int i;
 
     // fft
     for(i = 0; i < fft_win; i++){
-        x_time[i] = in[i]*hann_win[i];
+        x_time[i] = in[i+time_ini]*hann_win[i];
     }
     fftw_execute(x_forward);
 
@@ -102,13 +104,13 @@ rosjack_data * apply_weights (rosjack_data *in, int mic){
     fftw_execute(y_inverse);
 
     // preparing output
-    rosjack_data * out = (rosjack_data *)malloc(sizeof(rosjack_data)*fft_win);
+    //rosjack_data * out = (rosjack_data *)malloc(sizeof(rosjack_data)*fft_win);
     for (i = 0; i<fft_win; i++){
         // fftw3 does an unnormalized ifft that requires this normalization
         out[i] = real(y_time[i])/(double)fft_win;
     }
 
-    return out;
+    //return out;
 }
 
 void shift_data(rosjack_data data, rosjack_data *buf, int size){
@@ -123,7 +125,7 @@ rosjack_data calculate_power(rosjack_data *buf, int size){
   for(int i = 0; i < size; i++){
     p += buf[i]*buf[i];
   }
-  return sqrt(p/size);
+  return p;
 }
 
 int jack_callback (jack_nframes_t nframes, void *arg){
@@ -149,14 +151,15 @@ int jack_callback (jack_nframes_t nframes, void *arg){
         for (i = 0; i < number_of_microphones; i++){
           //adding this window to overlap buffer2
           for(j = 0; j < nframes; j++)
-            in_overlap2[i][j+(nframes*3)] = in[i][j];
+            in_buff[i][j+(nframes*5)] = in[i][j];
           
           //applying weights
-          memcpy(aux[i], apply_weights(in_overlap2[i],i),sizeof(rosjack_data)*fft_win);
+          apply_weights(in_buff[i],out_buff1,0,i);
+          apply_weights(in_buff[i],out_buff2,(int)(nframes*2),i);
           
           //applying overlap and add per microphone
           for(j = 0; j < nframes; j++)
-            overlap_out[i][j] = (in_overlap[i][j+(nframes*2)] + aux[i][j+nframes])/2;
+            overlap_out[i][j] = (out_buff1[j+((int)(nframes*2.5))] + out_buff2[j+((int)(nframes*0.5))]);
         }
         
         //doing GSC for each sample
@@ -228,14 +231,10 @@ int jack_callback (jack_nframes_t nframes, void *arg){
         //Outputing to ROS
         output_to_rosjack (out, nframes, output_type);
         
-        //copying aux to overlap buffer
-        for (i = 0; i < number_of_microphones; i++){
-            memcpy(in_overlap[i], aux[i],sizeof(rosjack_data)*fft_win);
-        }
         //shifting in_overlap buffer
         for (i = 0; i < number_of_microphones; i++){
-            for(j = 0;j < fft_win-nframes; j++)
-                in_overlap2[i][j] = in_overlap2[i][j+nframes];
+            for(j = 0;j < buf_win-nframes; j++)
+                in_buff[i][j] = in_buff[i][j+nframes];
         }
     }else{
         rosjack_data zeros[1024];
@@ -330,6 +329,7 @@ int main (int argc, char *argv[]) {
     
     std::cout << "Pre-allocating space for internal buffers." << std::endl;
     fft_win = rosjack_window_size*4;
+    buf_win = rosjack_window_size*6;
     
     x_fft = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_win);
     x_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_win);
@@ -344,12 +344,12 @@ int main (int argc, char *argv[]) {
         hann_win[i] = hann(i, fft_win);
     }
     
-    in_overlap = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
-    in_overlap2 = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
+    in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; i++){
-        in_overlap[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
-        in_overlap2[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+        in_buff[i] = (rosjack_data *) calloc (buf_win,sizeof(rosjack_data));
     }
+    out_buff1 = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+    out_buff2 = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     
     block_matrix = (rosjack_data **) malloc (sizeof(rosjack_data*)*(number_of_microphones-1));
     filter = (rosjack_data **) malloc (sizeof(rosjack_data*)*(number_of_microphones-1));
