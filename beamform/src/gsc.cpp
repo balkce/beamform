@@ -360,10 +360,12 @@ int main (int argc, char *argv[]) {
     last_outputs = (rosjack_data *) calloc (filter_size,sizeof(rosjack_data));
     
     freqs = (double *)malloc(sizeof(double)*fft_win);
-    for(i = 0; i<fft_win/2;i++){
-        freqs[i] = ((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
+    freqs[0] = 0.0;
+    for(i = 0; i<fft_win/2-1;i++){
+        freqs[i+1] = ((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
         freqs[fft_win-1-i] = -((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
     }
+    freqs[(fft_win/2)-1] = ((double)rosjack_sample_rate)/2;
     
     weights = (std::complex<double> **) malloc (sizeof(std::complex<double>*)*number_of_microphones);
     for(i = 0; i<number_of_microphones;i++){
