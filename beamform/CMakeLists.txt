@@ -40,14 +40,12 @@ add_library(rosjack
 )
 
 add_executable(das src/das.cpp)
-add_executable(das_time src/das_time.cpp)
 add_executable(mvdr src/mvdr.cpp)
 add_executable(beamform src/beamform.cpp)
 add_executable(rosjack_write src/jack_write.cpp)
 add_executable(rosjack_read src/jack_read.cpp)
 add_executable(rosjack_ref src/jack_ref.cpp)
 add_executable(phase src/phase.cpp)
-add_executable(phase2 src/phase2.cpp)
 add_executable(gsc src/gsc.cpp)
 
 target_link_libraries(rosjack
@@ -58,12 +56,6 @@ target_link_libraries(rosjack
 add_dependencies(rosjack ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(das
-  rosjack
-  ${FFTW_LIBRARIES}
-  ${catkin_LIBRARIES}
-)
-
-target_link_libraries(das_time
   rosjack
   ${FFTW_LIBRARIES}
   ${catkin_LIBRARIES}
@@ -97,12 +89,6 @@ target_link_libraries(rosjack_ref
 )
 
 target_link_libraries(phase
-  rosjack
-  ${FFTW_LIBRARIES}
-  ${catkin_LIBRARIES}
-)
-
-target_link_libraries(phase2
   rosjack
   ${FFTW_LIBRARIES}
   ${catkin_LIBRARIES}
