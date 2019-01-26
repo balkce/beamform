@@ -41,7 +41,6 @@ add_library(rosjack
 
 add_executable(das src/das.cpp)
 add_executable(mvdr src/mvdr.cpp)
-add_executable(beamform src/beamform.cpp)
 add_executable(rosjack_write src/jack_write.cpp)
 add_executable(rosjack_read src/jack_read.cpp)
 add_executable(rosjack_ref src/jack_ref.cpp)
@@ -64,11 +63,6 @@ target_link_libraries(das
 target_link_libraries(mvdr
   rosjack
   ${FFTW_LIBRARIES}
-  ${catkin_LIBRARIES}
-)
-
-target_link_libraries(beamform
-  rosjack
   ${catkin_LIBRARIES}
 )
 
