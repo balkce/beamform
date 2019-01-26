@@ -5,10 +5,6 @@
 #include "rosjack.h"
 #include "util.h"
 
-#include <map>
-#include <vector>
-#include <cmath>
-
 // Include FFTW header
 #include <complex>
 #include <fftw3.h>
@@ -39,34 +35,18 @@ double hann(unsigned int buffer_i, unsigned int buffer_size){
 }
 
 void update_weights(bool ini=false){
+    calculate_delays(delays);
+    
     int i,j;
     
-    double this_dist = 0.0;
-    double this_angle = 0.0;
-    
-    printf("New delays:\n");
     for(i = 0; i < array_geometry.size(); i++){
         if (i == 0){
-            //assuming first microphone as reference
-            delays[i] = 0.0;
             if(ini){
                 for(j = 0; j < fft_win; j++){
                     weights(i,j) = 1.0; 
                 }
             }
-            printf("\t %d -> %f\n",i,delays[i]);
         }else{
-            this_dist = array_geometry[i]["dist"];
-            this_angle = array_geometry[i]["angle"]-angle;
-            if(this_angle>180){
-                this_angle -= 360;
-            }else if(this_angle<-180){
-                this_angle += 360;
-            }
-            
-            delays[i] = this_dist*cos(this_angle*deg2rad)/(-v_sound);
-            printf("\t %d -> %f\n",i,delays[i]);
-            
             for(j = 0; j < fft_win; j++){
                 weights(i,j) = std::exp(-M_I*(double)2*PI*freqs[j]*delays[i]); 
             }
@@ -153,7 +133,6 @@ void theta_roscallback(const std_msgs::Float32::ConstPtr& msg){
 
 
 int main (int argc, char *argv[]) {
-    const char *client_name = "beamform";
     int i;
     /* ROS initialization*/
     ros::init(argc, argv, client_name);
@@ -195,12 +174,7 @@ int main (int argc, char *argv[]) {
     }
     
     freqs = (double *)malloc(sizeof(double)*fft_win);
-    freqs[0] = 0.0;
-    for(i = 0; i<(fft_win/2)-1;i++){
-        freqs[i+1] = ((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
-        freqs[fft_win-1-i] = -((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
-    }
-    freqs[(fft_win/2)-1] = ((double)rosjack_sample_rate)/2;
+    calculate_frequency_vector(freqs,fft_win);
     
     delays = (double *) malloc (sizeof(double)*number_of_microphones);
     

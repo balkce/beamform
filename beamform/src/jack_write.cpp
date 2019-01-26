@@ -11,14 +11,14 @@ int jack_callback (jack_nframes_t nframes, void *arg){
 
 
 int main (int argc, char *argv[]) {
-  const char *client_name = "rosjack_write";
+  const char *client_name_local = "rosjack_write";
   
   /* ROS initialization*/
-  ros::init(argc, argv, client_name);
+  ros::init(argc, argv, client_name_local);
   ros::NodeHandle n;
   
   /* create JACK agent */
-  if(rosjack_create (ROSJACK_WRITE,&n, "jackaudio", client_name, 0, jack_callback)){
+  if(rosjack_create (ROSJACK_WRITE,&n, "jackaudio", client_name_local, 0, jack_callback)){
     ROS_ERROR("JACK agent could not be created.\n");
     ros::shutdown();
     exit(1);

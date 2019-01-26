@@ -5,10 +5,6 @@
 #include "rosjack.h"
 #include "util.h"
 
-#include <map>
-#include <vector>
-#include <cmath>
-
 // Include FFTW header
 #include <complex>
 #include <fftw3.h>
@@ -52,34 +48,18 @@ double hann(unsigned int buffer_i, unsigned int buffer_size){
 }
 
 void update_weights(bool ini=false){
+    calculate_delays(delays);
+    
     int i,j;
     
-    double this_dist = 0.0;
-    double this_angle = 0.0;
-    
-    printf("New delays:\n");
     for(i = 0; i < array_geometry.size(); i++){
         if (i == 0){
-            //assuming first microphone as reference
-            delays[i] = 0.0;
             if(ini){
                 for(j = 0; j < fft_win; j++){
                     weights(i,j) = 1.0; 
                 }
             }
-            printf("\t %d -> %f\n",i,delays[i]);
         }else{
-            this_dist = array_geometry[i]["dist"];
-            this_angle = array_geometry[i]["angle"]-angle;
-            if(this_angle>180){
-                this_angle -= 360;
-            }else if(this_angle<-180){
-                this_angle += 360;
-            }
-            
-            delays[i] = this_dist*cos(this_angle*deg2rad)/(-v_sound);
-            printf("\t %d -> %f\n",i,delays[i]);
-            
             for(j = 0; j < fft_win; j++){
                 weights(i,j) = std::exp(-M_I*(double)2*PI*freqs[j]*delays[i]); 
             }
@@ -109,7 +89,7 @@ void apply_weights (rosjack_data **in, rosjack_data *out, unsigned int time_ini)
         this_mag = 0.0;
         for(i = 0; i < number_of_microphones; i++)
             this_mag += abs(in_fft(i,j));
-        this_mag /= number_of_microphones;
+        this_mag /= number_of_microphones*fft_win; //normalize the average against window length
         
         if(this_freq >= freq_min && this_freq <= freq_max){
             if(this_mag > freq_mag_threshold){
@@ -192,14 +172,57 @@ void theta_roscallback(const std_msgs::Float32::ConstPtr& msg){
     update_weights();
 }
 
+void mvdr_handle_params(ros::NodeHandle *n){
+    std::string node_name = ros::this_node::getName();
+    std::cout << "MVDR ROS parameters: " << std::endl;
+    
+    double past_windows_tmp;
+    if ((*n).getParam(node_name+"/past_windows",past_windows_tmp)){
+        past_windows = (int)past_windows_tmp;
+        ROS_INFO("Number of Windows for Covariance Calculation: %d",past_windows);
+    }else{
+        past_windows = 10;
+        ROS_WARN("Number of Windows for Covariance Calculation argument not found in ROS param server, using default value (%d).",past_windows);
+    }
+    
+    if ((*n).getParam(node_name+"/freq_mag_threshold",freq_mag_threshold)){
+        ROS_INFO("Frequency Magnitude Threshold: %f",freq_mag_threshold);
+    }else{
+        freq_mag_threshold = 1.5;
+        ROS_WARN("Frequency Magnitude Threshold argument not found in ROS param server, using default value (%f).",freq_mag_threshold);
+    }
+    
+    if ((*n).getParam(node_name+"/freq_max",freq_max)){
+        ROS_INFO("Max Frequency: %f",freq_max);
+    }else{
+        freq_max = 4000;
+        ROS_WARN("Max Frequency argument not found in ROS param server, using default value (%f).",freq_max);
+    }
+    
+    if ((*n).getParam(node_name+"/freq_min",freq_min)){
+        ROS_INFO("Min Frequency: %f",freq_min);
+    }else{
+        freq_min = 400;
+        ROS_WARN("Min Frequency argument not found in ROS param server, using default value (%f).",freq_min);
+    }
+    
+    if ((*n).getParam(node_name+"/out_amp",out_amp)){
+        ROS_INFO("Output Amplification: %f",out_amp);
+    }else{
+        out_amp = 4.5;
+        ROS_WARN("Output Amplification argument not found in ROS param server, using default value (%f).",out_amp);
+    }
+    
+}
+
 
 int main (int argc, char *argv[]) {
-    const char *client_name = "beamform";
     int i;
     /* ROS initialization*/
     ros::init(argc, argv, client_name);
     ros::NodeHandle n;
     handle_params(&n);
+    mvdr_handle_params(&n);
     
     ros::Subscriber theta_subscriber = n.subscribe("theta", 1000, theta_roscallback);
     
@@ -236,12 +259,7 @@ int main (int argc, char *argv[]) {
     }
     
     freqs = (double *)malloc(sizeof(double)*fft_win);
-    freqs[0] = 0.0;
-    for(i = 0; i<(fft_win/2)-1;i++){
-        freqs[i+1] = ((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
-        freqs[fft_win-1-i] = -((double)(i+1)/(double)fft_win)*((double)rosjack_sample_rate);
-    }
-    freqs[(fft_win/2)-1] = ((double)rosjack_sample_rate)/2;
+    calculate_frequency_vector(freqs,fft_win);
     
     delays = (double *) malloc (sizeof(double)*number_of_microphones);
     

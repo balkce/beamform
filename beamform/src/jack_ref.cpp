@@ -77,17 +77,17 @@ int jack_callback (jack_nframes_t nframes, void *arg){
 }
 
 int main (int argc, char *argv[]) {
-    const char *client_name = "rosjack_ref";
+    const char *client_name_local = "rosjack_ref";
     int i;
     /* ROS initialization*/
-    ros::init(argc, argv, client_name);
+    ros::init(argc, argv, client_name_local);
     ros::NodeHandle n;
     handle_params(&n);
     
     number_of_microphones = 1;
     
     /* create JACK agent */
-    if(rosjack_create (ROSJACK_READ, &n, "jackaudio_ref", client_name, number_of_microphones, jack_callback)){
+    if(rosjack_create (ROSJACK_READ, &n, "jackaudio_ref", client_name_local, number_of_microphones, jack_callback)){
         ROS_ERROR("JACK agent could not be created.\n");
         ros::shutdown();
         exit(1);

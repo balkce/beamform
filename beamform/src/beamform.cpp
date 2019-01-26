@@ -5,9 +5,6 @@
 #include "rosjack.h"
 #include "util.h"
 
-#include <map>
-#include <vector>
-
 int max_mic_past = -1;
 
 int jack_callback (jack_nframes_t nframes, void *arg){
@@ -48,8 +45,6 @@ int jack_callback (jack_nframes_t nframes, void *arg){
 }
 
 int main (int argc, char *argv[]) {
-  const char *client_name = "beamform";
-  
   /* ROS initialization*/
   ros::init(argc, argv, client_name);
   ros::NodeHandle n;

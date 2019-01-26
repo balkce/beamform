@@ -2,5 +2,12 @@
   <node name="beamform" pkg="beamform" type="mvdr" output="screen">
     <rosparam command="load" file="$(find beamform)/rosjack_config.yaml" />
     <rosparam command="load" file="$(find beamform)/beamform_config.yaml" />
+    <rosparam>
+      past_windows: 10
+      freq_mag_threshold: 0.005
+      freq_max: 4000
+      freq_min: 1
+      out_amp: 10.0
+    </rosparam>
   </node>
 </launch>

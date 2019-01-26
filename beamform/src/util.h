@@ -2,6 +2,11 @@
     Some utilities for ROS handling and quality-of-life coding.
 */
 
+//for variable handling
+#include <map>
+#include <vector>
+#include <cmath>
+
 //to measure execution time
 #include <chrono>
 typedef std::chrono::high_resolution_clock::time_point TimeVar;
@@ -15,6 +20,7 @@ double v_sound = 343;
 double rad2deg = 180.0/PI;
 double deg2rad = PI/180.0;
 char *home_path;
+const char *client_name = "beamform";
 
 //global variables
 bool verbose;
@@ -84,4 +90,42 @@ void handle_params(ros::NodeHandle *n){
         std::cout << "\t a: " << array_geometry[i]["angle"] << std::endl;
     }
     std::cout << std::endl;
+}
+
+void calculate_delays(double *delay_buffer){
+    int i,j;
+    
+    double this_dist = 0.0;
+    double this_angle = 0.0;
+    
+    printf("New delays:\n");
+    for(i = 0; i < array_geometry.size(); i++){
+        if (i == 0){
+            //assuming first microphone as reference
+            delay_buffer[i] = 0.0;
+            printf("\t %d -> %f\n",i,delay_buffer[i]);
+        }else{
+            this_dist = array_geometry[i]["dist"];
+            this_angle = array_geometry[i]["angle"]-angle;
+            if(this_angle>180){
+                this_angle -= 360;
+            }else if(this_angle<-180){
+                this_angle += 360;
+            }
+            
+            delay_buffer[i] = this_dist*cos(this_angle*deg2rad)/(-v_sound);
+            printf("\t %d -> %f\n",i,delay_buffer[i]);
+        }
+    }
+}
+
+void calculate_frequency_vector(double *freq_buffer, unsigned int freq_buffer_size){
+    int i;
+    
+    freq_buffer[0] = 0.0;
+    for(i = 0; i<(freq_buffer_size/2)-1;i++){
+        freq_buffer[i+1] = ((double)(i+1)/(double)freq_buffer_size)*((double)rosjack_sample_rate);
+        freq_buffer[freq_buffer_size-1-i] = -((double)(i+1)/(double)freq_buffer_size)*((double)rosjack_sample_rate);
+    }
+    freq_buffer[(freq_buffer_size/2)-1] = ((double)rosjack_sample_rate)/2;
 }
