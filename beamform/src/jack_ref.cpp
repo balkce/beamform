@@ -11,17 +11,10 @@
 
 bool READY = false;
 
-double *hann_win;
-unsigned int fft_win;
-unsigned int buf_win;
-
-//reused buffers
-rosjack_data *in_buff;
-rosjack_data *out_buff1;
-rosjack_data *out_buff2;
-
-double hann(unsigned int buffer_i, unsigned int buffer_size){
-    return 0.5 - 0.5*cos(2*PI*buffer_i/(buffer_size-1));
+void apply_weights (rosjack_data *in, rosjack_data *out, int mic){
+    for(int i = 0; i < fft_win; i++){
+        out[i] = in[i]*hann_win[i];
+    }
 }
 
 int jack_callback (jack_nframes_t nframes, void *arg){
@@ -29,35 +22,21 @@ int jack_callback (jack_nframes_t nframes, void *arg){
     int i,j;
     
     //Inputing from ROS
-    rosjack_data out[nframes];
+    rosjack_data **out;  //needs to be dynamically allocated to be used by do_overlap_bymic
+    out = (rosjack_data **) malloc (sizeof(rosjack_data*)*1);
+    out[0] = (rosjack_data *) calloc (nframes,sizeof(rosjack_data));
+    
     if(READY){
         rosjack_data **in = input_from_rosjack (nframes);
-        
-        //appending this window to input buffer
-        for(j = 0; j < nframes; j++)
-            in_buff[j+(nframes*5)] = in[0][j];
-        
-        //applying hann window
-        for(j = 0; j < fft_win; j++){
-            out_buff1[j] = in_buff[j]*hann_win[j];
-            out_buff2[j] = in_buff[j+(nframes*2)]*hann_win[j];
-        }
-
-        //doing overlap and storing in output
-        for(j = 0; j < nframes; j++)
-            out[j] = (out_buff1[j+((int)(nframes*2.5))] + out_buff2[j+((int)(nframes*0.5))]);
-        
-        //shifting input buffer one window
-        for(j = 0;j < buf_win-nframes; j++)
-            in_buff[j] = in_buff[j+nframes];
+        do_overlap_bymic(in, out, nframes, apply_weights);
     }else{
         for (i = 0; i < nframes; i++){
-            out[i] = 0.0;
+            out[0][i] = 0.0;
         }
     }
     
     //Outputing to ROS
-    output_to_rosjack (out, nframes, output_type);
+    output_to_rosjack (out[0], nframes, output_type);
     
     //std::cout << "Callback took: " << duration(timeNow()-t_bef)/1000000.0 << " ms.\n";
     return 0;
@@ -81,17 +60,7 @@ int main (int argc, char *argv[]) {
     }
     
     std::cout << "Pre-allocating space for internal buffers." << std::endl;
-    fft_win = rosjack_window_size*4;
-    buf_win = rosjack_window_size*6;
-    
-    hann_win = (double *) malloc(sizeof(double) * fft_win);
-    for (i = 0; i < fft_win; i++){
-        hann_win[i] = hann(i, fft_win);
-    }
-    out_buff1 = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
-    out_buff2 = (rosjack_data *) malloc (sizeof(rosjack_data)*fft_win);
-    
-    in_buff = (rosjack_data *) malloc (sizeof(rosjack_data)*buf_win);
+    prepare_overlap_and_add_bymic(); //fft_win is assinged here
     
     READY = true;
     
