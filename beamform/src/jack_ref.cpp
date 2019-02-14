@@ -1,5 +1,5 @@
 /**
- * ROS agent that reads from microphone and outputs to ROS topic
+ * Agent that outputs the first microphone of the array in the same delayed manner as the rest of the frequency-domain beamformers do when using the overlap-and-add logistics
  */
 
 #include "rosjack.h"
