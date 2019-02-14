@@ -1,5 +1,5 @@
 /**
- * ROS agent that reads from microphone and outputs to ROS topic
+ * Delay-and-sum beamformer in the frequency domain.
  */
 
 #include "rosjack.h"

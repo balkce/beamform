@@ -1,5 +1,6 @@
 /**
- * ROS agent that reads from microphone and outputs to ROS topic
+ * Mininimum-variance distortionless response, with frequency magnitude
+ * thresholding so that it can be carried out online.
  */
 
 #include "rosjack.h"

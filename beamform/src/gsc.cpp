@@ -1,5 +1,5 @@
 /**
- * ROS agent that reads from microphone and outputs to ROS topic
+ * Generalized sidelobe canceller, with a dynamic adaptation rate (mu).
  */
 
 #include "rosjack.h"

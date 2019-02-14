@@ -1,5 +1,5 @@
 /**
- * ROS agent that reads from microphone and outputs to ROS topic
+ * Beamform that carries out phase-based frequency masking by simple thresholding.
  */
 
 #include "rosjack.h"
