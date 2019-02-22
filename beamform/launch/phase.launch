@@ -4,7 +4,7 @@
     <rosparam command="load" file="$(find beamform)/beamform_config.yaml" />
     <rosparam>
       min_phase: 15.0
-      min_mag: 0.0001
+      min_mag: 0.05
       past_masks_num: 2
     </rosparam>
   </node>
