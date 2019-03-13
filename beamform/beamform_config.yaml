@@ -38,3 +38,20 @@ mic2: {id: 2, x: -0.156, y: -0.090}
 #mic0: {id: 14, x: 0.000, y:  0.000}
 #mic1: {id:  8, x: 0.000, y: -0.342}
 
+#### INTERFERENCES (will be registered until abs(angle_interfX) > 180)
+# used for LCMV and GSS
+angle_interf1: 90.0
+angle_interf2: 181.0
+angle_interf3: 181.0
+angle_interf4: 181.0
+angle_interf5: 181.0
+angle_interf6: 181.0
+angle_interf7: 181.0
+angle_interf8: 181.0
+angle_interf9: 181.0
+angle_interf10: 181.0
+angle_interf11: 181.0
+angle_interf12: 181.0
+angle_interf13: 181.0
+angle_interf14: 181.0
+angle_interf15: 181.0

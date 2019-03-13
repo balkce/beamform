@@ -13,6 +13,9 @@ typedef std::chrono::high_resolution_clock::time_point TimeVar;
 #define duration(a) std::chrono::duration_cast<std::chrono::nanoseconds>(a).count()
 #define timeNow() std::chrono::high_resolution_clock::now()
 
+//for nanosleep function
+#include <time.h>
+
 //constants
 #define PI 3.141592653589793238462643383279502884
 std::complex<double> M_I(0,1);
@@ -27,6 +30,7 @@ bool verbose;
 double angle;
 int number_of_microphones = 1;
 std::vector< std::map<std::string,double> > array_geometry;
+std::vector< double > interference_angles;
 
 //overlap-and-add stuff
 unsigned int num_fftwindows = 4; //must be a power of 2
@@ -81,6 +85,27 @@ void handle_params(ros::NodeHandle *n){
         mic_param = ss.str();
     }
     
+    int interf_number = 1;
+    ss.str("");
+    ss << node_name+"/angle_interf";
+    ss << interf_number;
+    std::string interf_param = ss.str();
+    double interf_angle;
+    
+    while((*n).getParam(interf_param,interf_angle)){
+        if (abs(interf_angle) <= 180){
+            interference_angles.push_back(interf_angle);
+            ROS_INFO("Interference %d at: %f",interf_number,interf_angle);
+            interf_number++;
+            ss.str("");
+            ss << node_name+"/angle_interf";
+            ss << interf_number;
+            interf_param = ss.str();
+        }else{
+            break;
+        }
+    }
+    
     //insert here code to consider first microphone as reference, ie. with coords (0,0)
     for(int i = 1; i < array_geometry.size(); i++){
         array_geometry[i]["x"] -= array_geometry[0]["x"];
@@ -129,6 +154,33 @@ void calculate_delays(double *delay_buffer){
     }
 }
 
+void calculate_interf_delays(double *delay_buffer, int interf_id, double interf_angle){
+    int i,j;
+    
+    double this_dist = 0.0;
+    double this_angle = 0.0;
+    
+    printf("New delays for interference %d in: %f\n",interf_id+1,interf_angle);
+    for(i = 0; i < array_geometry.size(); i++){
+        if (i == 0){
+            //assuming first microphone as reference
+            delay_buffer[i] = 0.0;
+            printf("\t %d -> %f\n",i,delay_buffer[i]);
+        }else{
+            this_dist = array_geometry[i]["dist"];
+            this_angle = array_geometry[i]["angle"]-interf_angle;
+            if(this_angle>180){
+                this_angle -= 360;
+            }else if(this_angle<-180){
+                this_angle += 360;
+            }
+            
+            delay_buffer[i] = this_dist*cos(this_angle*deg2rad)/(-v_sound);
+            printf("\t %d -> %f\n",i,delay_buffer[i]);
+        }
+    }
+}
+
 void calculate_frequency_vector(double *freq_buffer, unsigned int freq_buffer_size){
     int i;
     
@@ -144,7 +196,7 @@ double hann(unsigned int buffer_i, unsigned int buffer_size){
     return 0.5 - 0.5*cos(2*PI*buffer_i/(buffer_size-1));
 }
 
-//fft_win is assinged here
+//fft_win is assigned here
 //run before allocating buffers any other buffers
 void prepare_overlap_and_add(){
     int i;
@@ -258,4 +310,12 @@ void do_overlap_bymic(rosjack_data **in, rosjack_data **out, jack_nframes_t nfra
         for(j = 0;j < fft_win-nframes; j++)
             in_buff[i][j] = in_buff[i][j+nframes];
     }
+}
+
+//Sleep function in milliseconds
+void millisleep(int milli){
+     struct timespec st = {0};
+     st.tv_sec = (milli/1000);
+     st.tv_nsec = (milli%1000)*1000000L;
+     nanosleep(&st, NULL);
 }
