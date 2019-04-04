@@ -26,7 +26,7 @@ fftw_plan x_forward, y_inverse;
 double *freqs;
 
 // MCRA stuff
-double smoothing_freq_window[3] = {0.25, 0.5, 0.25};
+double smoothing_freq_window[3] = {0.5, 1.0, 0.5};
 int smoothing_freq_window_pos[3] = {-1, 0, 1};
 int smoothing_freq_window_size = 3;
 int current_L = 0;
@@ -42,6 +42,7 @@ double alphaS = 0.95;
 double alphaD = 0.95;
 double delta = 0.001;
 int L = 75; //this may need to be re-calculated: it's the number of windows between minima searches, and should represent between 0.5 and 1.5 s.
+double out_amp = 2.0;
 
 double *lambda; //noise estimation
 
@@ -125,7 +126,7 @@ void mcra (rosjack_data **in, rosjack_data *out){
     for(j = 1; j < fft_win; j++){
         this_pha = arg(in_fft(0,j));
         
-        this_mag = abs(in_fft(0,j))-sqrt(lambda[j]); //removing the noise magnitude
+        this_mag = (abs(in_fft(0,j))-sqrt(lambda[j]))*out_amp; //removing the noise magnitude
         if (this_mag < 0)
             this_mag = 0.0;
             
@@ -190,17 +191,25 @@ void mcra_handle_params(ros::NodeHandle *n){
     if ((*n).getParam(node_name+"/delta",delta)){
         ROS_INFO("Delta: %f",delta);
     }else{
-        delta = 0.01;
+        delta = 0.001;
         ROS_WARN("Delta argument not found in ROS param server, using default value (%f).",delta);
     }
     
     if ((*n).getParam(node_name+"/L",L)){
         ROS_INFO("Training Windows (L): %d",L);
     }else{
-        L = 0.001;
+        L = 0.01;
         ROS_WARN("Training Windows (L) argument not found in ROS param server, using default value (%d).",L);
     }
+    if ((*n).getParam(node_name+"/out_amp",out_amp)){
+        ROS_INFO("Output Amplification: %f",out_amp);
+    }else{
+        out_amp = 2.0;
+        ROS_WARN("Output Amplification argument not found in ROS param server, using default value (%f).",out_amp);
+    }
+    
 }
+
 int main (int argc, char *argv[]) {
     int i;
     /* ROS initialization*/

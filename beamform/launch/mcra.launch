@@ -7,6 +7,7 @@
       alphaD: 0.95
       delta: 0.001
       L: 75
+      out_amp: 2.5
     </rosparam>
   </node>
 </launch>
