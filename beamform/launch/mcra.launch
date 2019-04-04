@@ -1,0 +1,12 @@
+<launch>
+  <node name="beamform" pkg="beamform" type="mcra" output="screen">
+    <rosparam command="load" file="$(find beamform)/rosjack_config.yaml" />
+    <rosparam command="load" file="$(find beamform)/beamform_config.yaml" />
+    <rosparam>
+      alphaS: 0.95
+      alphaD: 0.95
+      delta: 0.001
+      L: 75
+    </rosparam>
+  </node>
+</launch>

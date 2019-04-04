@@ -50,6 +50,7 @@ add_executable(phase src/phase.cpp)
 add_executable(gsc src/gsc.cpp)
 add_executable(lcmv src/lcmv.cpp)
 add_executable(gss src/gss.cpp)
+add_executable(mcra src/mcra.cpp)
 
 target_link_libraries(rosjack
   ${JACK_LIBRARIES}
@@ -105,6 +106,12 @@ target_link_libraries(lcmv
 )
 
 target_link_libraries(gss
+  rosjack
+  ${FFTW_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(mcra
   rosjack
   ${FFTW_LIBRARIES}
   ${catkin_LIBRARIES}
