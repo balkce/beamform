@@ -33,7 +33,7 @@ Note for audio file: the audio file is a 16-bit WAV file with the sample rate wi
 
 The following nodes are also included:
 * rosjack_read: example of a node that reads from JACK and outputs to the configured output in rosjack_config.yaml (can be the JackAudio ROS topic, JACK, or both).
-* rosjack_write: example of a node that writes to JACK from theh JackAudio ROS topic. It uses an intermediate buffer to be robust against inconsistencies in timing, but induces some lag between input and output.
+* rosjack_write: example of a node that writes to JACK from the JackAudio ROS topic. It uses an intermediate buffer to be robust against inconsistencies in timing, but induces some lag between input and output.
 * rosjack_ref: (with accompanying launch file) outputs the reference microphone (mic1) applying the overlap-and-add logistics the beamformers use. These logistics insert a lag which makes it difficult to evaluate the beamformers output online. The rosjack_ref node output should synchronize exactly with the output of the beamformers.
 * mcra: (with accompanying launch file) carries out the Minima Controlled Recursive Averaging (MCRA) noise estimator with the mic1 input, it removes the noise estimation from mic1 and outputs the result.
 
