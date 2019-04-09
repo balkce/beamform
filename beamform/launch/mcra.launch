@@ -5,9 +5,11 @@
     <rosparam>
       alphaS: 0.95
       alphaD: 0.95
+      alphaD2: 0.98
       delta: 0.001
-      L: 75
+      L: 50
       out_amp: 2.5
+      out_only_noise: false
     </rosparam>
   </node>
 </launch>
