@@ -26,7 +26,7 @@ fftw_plan x_forward, y_inverse;
 double *freqs;
 
 // MCRA stuff
-double smoothing_freq_window[3] = {0.5, 1.0, 0.5};
+double smoothing_freq_window[3] = {0.25, 0.5, 0.25};
 int smoothing_freq_window_pos[3] = {-1, 0, 1};
 int smoothing_freq_window_size = 3;
 int current_L = 0;
@@ -36,11 +36,14 @@ double *S_prev;
 double *S_f;
 double *S_tmp;
 double *S_min;
+double past_mag = 0;
 
 // MCRA parameters
 double alphaS = 0.95;
 double alphaD = 0.95;
+double alphaD2 = 0.97;
 double delta = 0.001;
+bool out_only_noise = false;
 int L = 75; //this may need to be re-calculated: it's the number of windows between minima searches, and should represent between 0.5 and 1.5 s.
 double out_amp = 2.0;
 
@@ -62,6 +65,8 @@ void mcra (rosjack_data **in, rosjack_data *out){
     
     int i,j,this_j;
     double this_mag, this_pha;
+    double total_mag = 0;
+    int inspect_j = 50;
     
     // fft
     //only uses the first channel;
@@ -94,12 +99,12 @@ void mcra (rosjack_data **in, rosjack_data *out){
     }
     
     //carrying out minima search
-    if(current_L >= L){
+    if(current_L > L){
         for(j = 0; j < fft_win; j++){
             S_min[j] = min(S_tmp[j],S[j]);
             S_tmp[j] = S[j];
         }
-        current_L = 0;
+        current_L = 1;
         first_L = false;
     }else{
         for(j = 0; j < fft_win; j++){
@@ -114,9 +119,8 @@ void mcra (rosjack_data **in, rosjack_data *out){
         if (first_L || S[j] < S_min[j]*delta || lambda[j] > in_fft_square(0,j)){
             if (((first_L) && ((1.0f/(double)current_L) > alphaD))){
                 lambda[j] = (1.0f/(double)current_L) * lambda[j] + (1.0f - (1.0f/(double)current_L)) * in_fft_square(0,j);
-
             }else{
-                lambda[j] = alphaD * lambda[j] + (1.0f - alphaD) * in_fft_square(0,j);
+                lambda[j] = alphaD2 * lambda[j] + (1.0f - alphaD) * in_fft_square(0,j);
             }
         }
     }
@@ -126,11 +130,18 @@ void mcra (rosjack_data **in, rosjack_data *out){
     for(j = 1; j < fft_win; j++){
         this_pha = arg(in_fft(0,j));
         
-        this_mag = (abs(in_fft(0,j))-sqrt(lambda[j]))*out_amp; //removing the noise magnitude
-        if (this_mag < 0)
-            this_mag = 0.0;
+        if (out_only_noise){
+          this_mag = (sqrt(lambda[j]))*out_amp; //output only the noise
+        }else{
+          this_mag = (abs(in_fft(0,j))-sqrt(lambda[j]))*out_amp; //removing the noise magnitude
+          if (this_mag < 0)
+              this_mag = 0.0;
+        }
             
         y_fft[j] = std::complex<double>(this_mag*cos(this_pha),this_mag*sin(this_pha));
+        
+        //if (j == inspect_j) 
+        //    printf("%d \t noise mag at %f Hz: %f\n",current_L,freqs[inspect_j],(sqrt(lambda[j]))*out_amp); fflush(stdout);
     }
     
     //storing current S in S_prev for next iteration
@@ -146,6 +157,7 @@ void mcra (rosjack_data **in, rosjack_data *out){
         // fftw3 does an unnormalized ifft that requires this normalization
         out[j] = (real(y_time[j])/(double)fft_win)/number_of_microphones;
     }
+    
 }
 
 int jack_callback (jack_nframes_t nframes, void *arg){
@@ -188,6 +200,13 @@ void mcra_handle_params(ros::NodeHandle *n){
         ROS_WARN("Alpha for D argument not found in ROS param server, using default value (%f).",alphaD);
     }
     
+    if ((*n).getParam(node_name+"/alphaD2",alphaD2)){
+        ROS_INFO("Alpha2 for D: %f",alphaD2);
+    }else{
+        alphaD2 = 0.97;
+        ROS_WARN("Alpha2 for D argument not found in ROS param server, using default value (%f).",alphaD2);
+    }
+    
     if ((*n).getParam(node_name+"/delta",delta)){
         ROS_INFO("Delta: %f",delta);
     }else{
@@ -206,6 +225,13 @@ void mcra_handle_params(ros::NodeHandle *n){
     }else{
         out_amp = 2.0;
         ROS_WARN("Output Amplification argument not found in ROS param server, using default value (%f).",out_amp);
+    }
+    
+    if ((*n).getParam(node_name+"/out_only_noise",out_only_noise)){
+        ROS_INFO("Output only noise: %d",out_only_noise);
+    }else{
+        out_only_noise = true;
+        ROS_WARN("Noise output argument not found in ROS param server, outputting filtered signal by default.");
     }
     
 }
