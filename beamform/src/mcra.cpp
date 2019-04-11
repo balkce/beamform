@@ -275,6 +275,9 @@ int main (int argc, char *argv[]) {
     
     //initializing vectors
     for(i = 0; i < fft_win; i++){
+        S_prev[i] = 0.0;
+        S_tmp[i] = 0.0;
+        S_min[i] = 0.0;
         lambda[i] = 0.0;
     }
     
