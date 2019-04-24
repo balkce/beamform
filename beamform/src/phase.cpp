@@ -19,19 +19,17 @@ fftw_plan x_forward, y_inverse;
 
 double *freqs;
 double *delays;
-double *phases_aligned;
 Eigen::MatrixXcd weights;
 
 double min_mag = 0.0001;
 double min_phase = 10;
 double min_phase_diff_mean = 10*M_PI/180;
-int past_masks_num = 10;
+int smooth_size = 10;
+double past_out = 0.0;
 
-//past fft masks in mags and phase
-double **past_mags;
-double **past_phas;
-
-//reused buffer
+//reused buffers
+double *phases_aligned;
+double *past_samples;
 Eigen::MatrixXcd in_fft;
 
 void shift_data(double data, double *buf, int size){
@@ -75,13 +73,13 @@ double get_overall_phase_diff(int min_i,int *num_i){
 }
 
 double get_mean(double * data, int data_size){
-    double data_sum = 0;
+    double data_sum = 0.0;
     
     for(int i = 0; i < data_size; i++){
         data_sum += data[i];
     }
     
-    return data_sum/(data_size);
+    return data_sum/(double)data_size;
 }
 
 void apply_weights (rosjack_data **in, rosjack_data *out){
@@ -103,7 +101,8 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
         }
     }
     
-    for(j = 0; j < fft_win; j++){
+    y_fft[0] = in_fft(0,0);
+    for(j = 1; j < fft_win; j++){
         //applying weights to align phases
         for(i = 0; i < number_of_microphones; i++){
           phases_aligned[i] = arg(conj(weights(i,j))*in_fft(i,j));
@@ -123,25 +122,18 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
         
         //and from the phase of the reference microphone
         pha_mean = arg(in_fft(0,j));
-        shift_data(pha_mean, past_phas[j],past_masks_num);
+        
         
         if (phase_diff_mean < min_phase_diff_mean){
-            //if below threshold, use the new frequency data bin
             y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
-            
-            //and store its magnitude for smoothing if need be
-            shift_data(mag_mean, past_mags[j],past_masks_num);
         }else{
-            //if not below threshold, reduce data bin energy by min_mag
-            shift_data(mag_mean*min_mag, past_mags[j],past_masks_num);
-            
-            //use an average smoothing mechanism to reduce "burps"
-            mag_mean = get_mean(past_mags[j],past_masks_num);
-            
-            //use the smoothened magnitude to create an almost nullified
-            //frequency data bin
+            mag_mean *= min_mag;
             y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
         }
+        
+        
+        //mag_mean *= 1 / (1+(15.0)*phase_diff_mean); // 15.0 here is a constant that is linked to the minimum phase difference
+        //y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
     }
     
     // ifft
@@ -163,6 +155,13 @@ int jack_callback (jack_nframes_t nframes, void *arg){
     if(READY){
         rosjack_data **in = input_from_rosjack (nframes);
         do_overlap(in, out, nframes, apply_weights);
+    
+        // this type of masking requires to smooth the output since it
+        // inserts many discontinuities in the time domain
+        for (j = 0; j<nframes; j++){
+            shift_data(out[j], past_samples,smooth_size);
+            out[j] = get_mean(past_samples,smooth_size);
+        }
     }else{
         for (i = 0; i < nframes; i++){
             out[i] = 0.0;
@@ -202,15 +201,15 @@ void phase_handle_params(ros::NodeHandle *n){
         ROS_WARN("Min Mag Threshold argument not found in ROS param server, using default value (%f).",min_mag);
     }
     
-    if ((*n).getParam(node_name+"/past_masks_num",past_masks_num)){
-        ROS_INFO("Number of Past Masks: %d",past_masks_num);
-        if(past_masks_num < 1){
-          past_masks_num = 20;
-          ROS_WARN("Invalid Number of Past Masks argument, using default value (%d).",past_masks_num);
+    if ((*n).getParam(node_name+"/smooth_size",smooth_size)){
+        ROS_INFO("Smooth Filter Size: %d",smooth_size);
+        if(smooth_size < 1){
+          smooth_size = 20;
+          ROS_WARN("Invalid Smooth Filter Size argument, using default value (%d).",smooth_size);
         }
     }else{
-        past_masks_num = 20;
-        ROS_WARN("Number of Past Masks argument not found in ROS param server, using default value (%d).",past_masks_num);
+        smooth_size = 20;
+        ROS_WARN("Smooth Filter Size argument not found in ROS param server, using default value (%d).",smooth_size);
     }
 }
 
@@ -246,11 +245,9 @@ int main (int argc, char *argv[]) {
     freqs = (double *)malloc(sizeof(double)*fft_win);
     calculate_frequency_vector(freqs,fft_win);
     
-    past_mags = (double **) malloc (sizeof(double*)*fft_win);
-    past_phas = (double **) malloc (sizeof(double*)*fft_win);
-    for (i = 0; i < fft_win; i++){
-        past_mags[i] = (double *) calloc (past_masks_num,sizeof(double));
-        past_phas[i] = (double *) calloc (past_masks_num,sizeof(double));
+    past_samples = (double *) malloc (sizeof(double)*smooth_size);
+    for (i = 0; i < smooth_size; i++){
+        past_samples[i] = 0.0;
     }
     
     delays = (double *) malloc (sizeof(double)*number_of_microphones);

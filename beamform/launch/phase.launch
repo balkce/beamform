@@ -3,9 +3,9 @@
     <rosparam command="load" file="$(find beamform)/rosjack_config.yaml" />
     <rosparam command="load" file="$(find beamform)/beamform_config.yaml" />
     <rosparam>
-      min_phase: 15.0
+      min_phase: 10.0
       min_mag: 0.05
-      past_masks_num: 2
+      smooth_size: 15
     </rosparam>
   </node>
 </launch>

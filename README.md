@@ -19,7 +19,7 @@ The direction of interest of all beamformers can be changed on-the-fly by writin
 
 Note for MVDR: it uses only a small portion of the frequencies for speed. It decides which frequencies to use upon a frequency range and basic enery thresholding that can be configured in the mvdr.launch file.
 
-Note for Phase: it process the weight of each frequency bin by considering if the phase is below a threshold; if not, it averages several past magnitudes and multiplies them by a factor to reduce the presence of not-in-phase interferences. To facilitate it's configuration, the phase.launch file includes the values for minimum phase and magnitude factor, and the number of past windows.
+Note for Phase: it process the weight of each frequency bin by considering if the phase is below a threshold; if not, it averages several past magnitudes and multiplies them by a factor to reduce the presence of not-in-phase interferences. To facilitate it's configuration, the phase.launch file includes the values for minimum phase and magnitude factor, and the size of its output smoothing filter.
 
 Note for GSC: it uses a dynamic mu that changes depending on the current sample SNR. To facilitate it's configuration, the gsc.launch file includes the values for the starting mu, the maximum mu, the filter size, if a VAD should be used (and its accompanying VAD threshold), and if the behavior of the mu value should be stored in an external text file (/home/user/mu_behavior.txt).
 
