@@ -62,8 +62,12 @@ void update_weights(bool ini=false){
 double get_overall_phase_diff(int min_i,int *num_i){
     if (min_i < number_of_microphones-1){
         double this_diff = 0;
+        double this_diff_raw;
         for (int i = min_i+1; i < number_of_microphones; i++){
-            this_diff += abs(phases_aligned[min_i]-phases_aligned[i]);
+            this_diff_raw = abs(phases_aligned[min_i]-phases_aligned[i]);
+            if (this_diff_raw > M_PI)
+                this_diff_raw = 2*M_PI - this_diff_raw;
+            this_diff += this_diff_raw;
             (*num_i)++;
         }
         return this_diff + get_overall_phase_diff(min_i+1,num_i);
