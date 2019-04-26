@@ -47,6 +47,7 @@ add_executable(rosjack_write src/jack_write.cpp)
 add_executable(rosjack_read src/jack_read.cpp)
 add_executable(rosjack_ref src/jack_ref.cpp)
 add_executable(phase src/phase.cpp)
+add_executable(phasempf src/phasempf.cpp)
 add_executable(gsc src/gsc.cpp)
 add_executable(lcmv src/lcmv.cpp)
 add_executable(gss src/gss.cpp)
@@ -93,6 +94,12 @@ target_link_libraries(phase
   ${catkin_LIBRARIES}
 )
 
+target_link_libraries(phasempf
+  rosjack
+  ${FFTW_LIBRARIES}
+  ${catkin_LIBRARIES}
+)
+
 target_link_libraries(gsc
   rosjack
   ${FFTW_LIBRARIES}
@@ -116,3 +123,5 @@ target_link_libraries(mcra
   ${FFTW_LIBRARIES}
   ${catkin_LIBRARIES}
 )
+
+

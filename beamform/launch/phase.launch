@@ -5,7 +5,7 @@
     <rosparam>
       min_phase: 10.0
       min_mag: 0.05
-      smooth_size: 15
+      smooth_size: 5
     </rosparam>
   </node>
 </launch>
