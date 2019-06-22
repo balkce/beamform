@@ -56,6 +56,7 @@ double MPF_rev_delta = 1.0;
 double out_amp = 1.0;
 double noise_floor = 0.001;
 bool out_only_noise = false;
+bool out_only_mcra = false;
 
 //reused buffers
 double *phases_aligned;
@@ -279,7 +280,12 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
         if (out_only_noise){
           mag_mean = MPF_lambda[j]*out_amp; //output only the noise
         }else{
-          mag_mean = (abs(out_soi[j])-MPF_lambda[j])*out_amp; //removing the noise magnitude
+          if (out_only_mcra){
+            mag_mean = (abs(out_soi[j])-sqrt(MCRA_lambda_noise[j]))*out_amp; //removing the MCRA noise estimate
+          }else{
+            mag_mean = (abs(out_soi[j])-MPF_lambda[j])*out_amp; //removing the whole MPF noise estimate
+          }
+          
           if (mag_mean < 0)
               mag_mean = noise_floor;
         }
@@ -460,8 +466,15 @@ void phasempf_handle_params(ros::NodeHandle *n){
     if ((*n).getParam(node_name+"/out_only_noise",out_only_noise)){
         ROS_INFO("Output only noise: %d",out_only_noise);
     }else{
-        out_only_noise = true;
+        out_only_noise = false;
         ROS_WARN("Noise output argument not found in ROS param server, outputting filtered signal by default.");
+    }
+    
+    if ((*n).getParam(node_name+"/out_only_mcra",out_only_mcra)){
+        ROS_INFO("Only filter with MCRA: %d",out_only_mcra);
+    }else{
+        out_only_mcra = false;
+        ROS_WARN("Only filter with MCRA argument not found in ROS param server, outputting with multi-channel post-filter.");
     }
 }
 
