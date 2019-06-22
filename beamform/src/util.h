@@ -214,7 +214,11 @@ void prepare_overlap_and_add(){
     fft_win = rosjack_window_size*num_fftwindows;
     past_out_windows = (int)(num_fftwindows/2)+1;
     out_buff_ini_shift = (int)((double)fft_win*3/4)-(int)((double)rosjack_window_size/2);//rosjack_window_size*2.5;
-    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);;
+    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);
+    
+    printf("Overlap Info:\n");
+    printf("\t Start index of first window: %d\n",out_buff_ini_shift);
+    printf("\t Start index of last window : %d\n",out_buff_last_shift);
     
     hann_win = create_hann_winn (fft_win);
     
@@ -267,7 +271,11 @@ void prepare_overlap_and_add_bymic(){
     fft_win = rosjack_window_size*num_fftwindows;
     past_out_windows = (int)(num_fftwindows/2)+1;
     out_buff_ini_shift = (int)((double)fft_win*3/4)-(int)((double)rosjack_window_size/2);//rosjack_window_size*2.5;
-    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);;
+    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);
+    
+    printf("Overlap By Mic, Info:\n");
+    printf("\t Start index of first window: %d\n",out_buff_ini_shift);
+    printf("\t Start index of last window : %d\n",out_buff_last_shift);
     
     hann_win = (double *) malloc(sizeof(double) * fft_win);
     for (i = 0; i < fft_win; i++){
@@ -328,7 +336,11 @@ void prepare_overlap_and_add_multi(int out_channels){
     fft_win = rosjack_window_size*num_fftwindows;
     past_out_windows = (int)(num_fftwindows/2)+1;
     out_buff_ini_shift = (int)((double)fft_win*3/4)-(int)((double)rosjack_window_size/2);//rosjack_window_size*2.5;
-    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);;
+    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);
+    
+    printf("Overlap Multi, Info:\n");
+    printf("\t Start index of first window: %d\n",out_buff_ini_shift);
+    printf("\t Start index of last window : %d\n",out_buff_last_shift);
     
     hann_win = (double *) malloc(sizeof(double) * fft_win);
     for (i = 0; i < fft_win; i++){
