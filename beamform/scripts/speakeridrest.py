@@ -6,37 +6,40 @@ from jack_msgs.msg import JackAudio
 import threading
 import time
 
-startflag = False
-
 this_win = []
+
+count = 0
+
+thread_alive = False
 
 def callback(data):
     global this_win
-    global startflag
+    global count
+    global thread_alive
     
     # read from jackaudio
     this_win = list(data.data)
-    #rospy.loginfo(rospy.get_caller_id() + "I heard %f : length %d", this_win[0], len(this_win))
+    rospy.loginfo(rospy.get_caller_id() + "I heard %f : length %d", this_win[0], len(this_win))
     
-    if not startflag:
-        print (str(startflag))
-        startflag = True
+    count = count + 1
+    
+    if(count > 10 and not thread_alive):
+        x = threading.Thread(target=thread_function, args=(1,))
+        x.start()
+        count = 0
 
 def thread_function(name):
     global pub
     global this_win
-    global startflag
+    global thread_alive
     
-    #publish to speakerid topic
-    while not startflag:
-        time.sleep(1)
-    
-    rate = rospy.Rate(10) # 10hz
-    while True:
-        hello_str = "hello world %s" % this_win[0]
-        rospy.loginfo(hello_str)
-        pub.publish(hello_str)
-        rate.sleep()
+    thread_alive = True
+    #while True:
+    hello_str = "hello world %s" % this_win[0]
+    rospy.loginfo(hello_str)
+    pub.publish(hello_str)
+    thread_alive = False
+
 
 rospy.loginfo("Starting speakeridrest node...")
 
@@ -46,8 +49,6 @@ try:
     pub = rospy.Publisher('speakerid', String, queue_size=10)
     rospy.Subscriber("jackaudio", JackAudio, callback)
     
-    x = threading.Thread(target=thread_function, args=(1,))
-    x.start()
     
 except rospy.ROSInterruptException:
     pass
