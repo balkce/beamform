@@ -13,7 +13,7 @@ Included beamformers:
 * phasempf: Phase-based binary masking with post-filter
 
 Two YAML files are required to be configured:
-* rosjack_config.yaml: verbosity, type of output (through only JACK, only ROS, or both), if the beamform output should be stored in an audio file, and if the XRUN count should be stored in a an external text file (/home/user/rosjack_xrun_count.txt)
+* rosjack_config.yaml: verbosity, type of output (through only JACK, only ROS, or both), if the beamform output should be stored in an audio file, if the XRUN count should be stored in a an external text file (/home/user/rosjack_xrun_count.txt), and the sample rate for the ROS output (if audio file is being stored, the ROS sample rate is used, if not, the JACK sample rate is used).
 * beamform_config.yaml: used by all beamformers, verbosity, initial direction of interest and microphone positions (required to named as "mic0", "mic1", "mic2", ..., "mic10", etc.).
 
 The direction of interest of all beamformers can be changed on-the-fly by writing to the topic /theta of type std::Float32 (0 is front, -90 is left, 90 is right, 180 is back).
@@ -46,6 +46,7 @@ Packages that can be installed trough apt official repositories:
 * libfftw3-dev: a very fast FFT C/C++ implementation
 * libeigen3-dev: lightweight linear algebra library
 * libsndfile1-dev: library to read and write audio files
+* libsamplerate0-dev: library for sample rate conversion
 
 ## References
 Some useful references:

@@ -16,6 +16,8 @@
 
 #include <sndfile.h>
 
+#include <samplerate.h>
+
 /*** ROS libraries ***/
 #include "ros/ros.h"
 #include "std_msgs/Float32.h"
@@ -31,6 +33,8 @@
 #define ROSJACK_READ 0
 #define ROSJACK_WRITE 1
 
+typedef jack_default_audio_sample_t rosjack_data;
+
 char *rosjack_home_path;
 
 //sndfile stuff
@@ -40,13 +44,24 @@ SF_INFO audio_info;
 float *write_file_buffer;
 int write_file_count;
 
+//samplerate stuff
+int ros_output_sample_rate;
+bool ros_output_sample_rate_defined;
+#define DEFAULT_CONVERTER SRC_SINC_FASTEST
+float * samplerate_buff_in;
+rosjack_data * samplerate_circbuff;
+unsigned int samplerate_circbuff_size;
+unsigned int samplerate_circbuff_w=0;
+unsigned int samplerate_circbuff_r=0;
+SRC_STATE * samplerate_conv;
+SRC_DATA samplerate_data;
+int rosjack_window_size_sampled;
+
 const char *ROSJACK_OUT_OUTPUT_TYPES[] = {
   "ROSJACK_OUT_BOTH",
   "ROSJACK_OUT_JACK",
   "ROSJACK_OUT_ROS"
 }; 
-
-typedef jack_default_audio_sample_t rosjack_data;
 
 jack_port_t    **jack_input_port;
 jack_port_t    *jack_output_port;
@@ -78,6 +93,8 @@ void rosjack_roscallback(const jack_msgs::JackAudio::ConstPtr& msg);
 int rosjack_create (int rosjack_type, ros::NodeHandle *n, const char *topic_name, const char *client_name, int input_number, int (*callback_function)(jack_nframes_t, void*));
 void close_rosjack();
 void siginthandler(int sig);
+void convert_to_sample_rate(rosjack_data *data_in, int data_length);
+bool convert_to_sample_rate_ready(int data_length);
 void output_to_rosjack (rosjack_data *data, int data_length, int output_type);
 void output_to_rosjack (rosjack_data *data, int data_length);
 rosjack_data ** input_from_rosjack (int data_length);

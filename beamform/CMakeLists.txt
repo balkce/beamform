@@ -22,10 +22,17 @@ catkin_package(
 
 INCLUDE(FindPkgConfig)
 pkg_check_modules (GLIB2 glib-2.0)
+message( "Found glib-2.0: " ${GLIB2_FOUND} )
 pkg_check_modules (JACK jack)
+message( "Found jack: " ${JACK_FOUND} )
 pkg_check_modules (FFTW fftw3)
+message( "Found fftw3: " ${FFTW_FOUND} )
 pkg_check_modules (EIGEN eigen)
+message( "Found eigen: " ${EIGEN_FOUND} )
 pkg_check_modules (SNDFILE sndfile)
+message( "Found sndfile: " ${SNDFILE_FOUND} )
+pkg_check_modules (SAMPLERATE samplerate)
+message( "Found samplerate: " ${SAMPLERATE_FOUND} )
 
 include_directories(
   src/rosjack
@@ -35,6 +42,7 @@ include_directories(
   ${EIGEN_INCLUDE_DIRS}
   ${FFTW_INCLUDE_DIRS}
   ${SNDFILE_INCLUDE_DIRS}
+  ${SAMPLERATE_INCLUDE_DIRS}
 )
 
 add_library(rosjack
@@ -56,6 +64,7 @@ add_executable(mcra src/mcra.cpp)
 target_link_libraries(rosjack
   ${JACK_LIBRARIES}
   ${SNDFILE_LIBRARIES}
+  ${SAMPLERATE_LIBRARIES}
   ${catkin_LIBRARIES}
 )
 add_dependencies(rosjack ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})

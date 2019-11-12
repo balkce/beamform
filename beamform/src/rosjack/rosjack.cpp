@@ -61,6 +61,14 @@ void rosjack_handle_params(ros::NodeHandle *n){
     ROS_WARN("Write XRUN count to file argument not found in ROS param server, using default value (%d).",write_xrun);
   }
   
+  if ((*n).getParam(node_name+"/ros_output_sample_rate",ros_output_sample_rate)){
+    ROS_INFO("ROS Output Sample Rate: %d",ros_output_sample_rate);
+    ros_output_sample_rate_defined = true;
+  }else{
+    ros_output_sample_rate_defined = false;
+    ROS_WARN("ROS Output Sample Rate argument not found in ROS param server, using JACK sample rate.");
+  }
+  
 }
 
 void jack_shutdown (void *arg){
@@ -124,6 +132,8 @@ int rosjack_create (int rosjack_type, ros::NodeHandle *n, const char *topic_name
   printf ("JACK window size: %d\n", rosjack_window_size);
   rosjack_sample_rate = jack_get_sample_rate (jack_client);
   printf ("JACK sample rate: %d\n", rosjack_sample_rate);
+  if(!ros_output_sample_rate_defined)
+    ros_output_sample_rate = rosjack_sample_rate;
   
   
   /* create the agent input ports */
@@ -146,10 +156,43 @@ int rosjack_create (int rosjack_type, ros::NodeHandle *n, const char *topic_name
     return 1;
   }
   
-  if(write_file){
-    printf("Writing jack output in: %s\n",audio_file_path);
+  if(ros_output_sample_rate != rosjack_sample_rate){
+    printf("Creating the sample rate converter for ROS output...\n");
+    int samplerate_error;
+    samplerate_conv = src_new (DEFAULT_CONVERTER,1,&samplerate_error);
+    if(samplerate_conv == NULL){
+      printf("%s\n",src_strerror (samplerate_error));
+      exit(1);
+    }
+
+    samplerate_data.src_ratio = (double)(((double)ros_output_sample_rate)/((double)rosjack_sample_rate));
+    printf("Using ROS Sample Rate ratio: %f\n", samplerate_data.src_ratio);
+    if (src_is_valid_ratio (samplerate_data.src_ratio) == 0){
+      printf ("Error : ROS Output Sample Rate change out of valid range. Using JACK sample rate as output\n");
+      ros_output_sample_rate = rosjack_sample_rate;
+    }
+    rosjack_window_size_sampled = rosjack_window_size * samplerate_data.src_ratio;
     
-    audio_info.samplerate = rosjack_sample_rate;
+    samplerate_circbuff_size = rosjack_window_size*50;
+    samplerate_circbuff = (rosjack_data *)malloc(samplerate_circbuff_size*sizeof(rosjack_data));
+    
+    samplerate_buff_in = (float *)malloc(rosjack_window_size*sizeof(float));
+    samplerate_data.data_in = samplerate_buff_in;
+    samplerate_data.data_out = (float *)malloc(rosjack_window_size*sizeof(float));
+    samplerate_data.input_frames = 0;
+    samplerate_data.output_frames = rosjack_window_size;
+    samplerate_data.end_of_input = 0;
+  }else{
+    printf("ROS Output Sample Rate and JACK sample rate are the same. Not creating sample rate converter.\n");
+  }
+  
+  if(write_file){
+    printf("Writing ROS output in: %s\n",audio_file_path);
+    
+    if(ros_output_sample_rate == rosjack_sample_rate || output_type == ROSJACK_OUT_JACK)
+      audio_info.samplerate = rosjack_sample_rate;
+    else
+      audio_info.samplerate = ros_output_sample_rate;
     audio_info.channels = 1;
     audio_info.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
     audio_file = sf_open (audio_file_path,SFM_WRITE,&audio_info);
@@ -167,7 +210,7 @@ int rosjack_create (int rosjack_type, ros::NodeHandle *n, const char *topic_name
   }
   
   if(rosjack_type == ROSJACK_WRITE){
-    ros2jack_buffer_size = jack_get_buffer_size (jack_client)*10;
+    ros2jack_buffer_size = jack_get_buffer_size (jack_client)*50;
     ros2jack_buffer = (rosjack_data *)malloc(sizeof(rosjack_data)*ros2jack_buffer_size);
   }
   
@@ -262,64 +305,233 @@ void siginthandler(int sig){
 
 void close_rosjack(){
   jack_client_close (jack_client);
+  src_delete(samplerate_conv);
 }
 
+void convert_to_sample_rate(rosjack_data *data_in, int data_length){
+  int i,samplerate_error;
+  
+  if (samplerate_data.input_frames == 0){
+    for (i=0;i<data_length;i++){
+      samplerate_buff_in[i] = data_in[i];
+    }
+    samplerate_data.data_in = samplerate_buff_in;
+    samplerate_data.input_frames = data_length;
+  }
+
+
+  if ((samplerate_error = src_process (samplerate_conv, &samplerate_data))){
+    printf ("\nSample rate conversion error : %s\n", src_strerror (samplerate_error)) ;
+    exit (1) ;
+  }
+  
+  //Output to buffer
+  for (i=0;i<samplerate_data.output_frames_gen;i++){
+    samplerate_circbuff[samplerate_circbuff_w] = (rosjack_data)samplerate_data.data_out[i];
+    samplerate_circbuff_w++;
+    if(samplerate_circbuff_w >= samplerate_circbuff_size)
+      samplerate_circbuff_w = 0;
+  }
+
+  samplerate_data.data_in += samplerate_data.input_frames_used;
+  samplerate_data.input_frames -= samplerate_data.input_frames_used;
+}
+
+bool convert_to_sample_rate_ready(int data_length){
+  //printf("w: %d \t r: %d, length: \t",samplerate_circbuff_w,samplerate_circbuff_r, data_length);fflush(stdout);
+  
+  if(samplerate_circbuff_w - samplerate_circbuff_r >= data_length || (samplerate_circbuff_r > samplerate_circbuff_w && samplerate_circbuff_w+(samplerate_circbuff_size-samplerate_circbuff_r) >= data_length)){
+    //printf("ready: 1 \n");fflush(stdout);
+    return true;
+  }else{
+    //printf("ready: 0 \n");fflush(stdout);
+    return false;
+  }
+}
 void output_to_rosjack (rosjack_data *data, int data_length, int out_type){
   output_type = out_type;
   output_to_rosjack (data, data_length);
 }
 
-void output_to_rosjack (rosjack_data *data, int data_length){
+void output_to_rosjack (rosjack_data *data_out, int data_length){
   /* This may seem as too much code repetition, but it's quicker this way online */
   /* The enclosing brackets in the switch cases are necessary to avoid re-definition errors */
   int j;
-  switch(output_type){
-    case ROSJACK_OUT_BOTH:{
-      jack_msgs::JackAudio out;
-      out.size = data_length;
-      ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
-      out.header.stamp = win_stamp;
-      rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
-      for (j = 0; j < data_length; ++j){
-        out.data.push_back(data[j]);
-        out_j[j] = data[j];
-        if(fabs(data[j]) >= 1.0){
-          ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data[j]));
-        }
-      }
-      rosjack_out.publish(out);
-    }break;
-    
-    case ROSJACK_OUT_JACK:{
-      rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
-      for (j = 0; j < data_length; ++j){
-        out_j[j] = data[j];
-        if(fabs(data[j]) >= 1.0){
-          ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data[j]));
-        }
-      }
-    }break;
-    
-    case ROSJACK_OUT_ROS:{
-      jack_msgs::JackAudio out;
-      out.size = data_length;
-      ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
-      out.header.stamp = win_stamp;
-      for (j = 0; j < data_length; ++j){
-        out.data.push_back(data[j]);
-        if(fabs(data[j]) >= 1.0){
-          ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data[j]));
-        }
-      }
-      rosjack_out.publish(out);
-    }break;
-  }
   
-  if(write_file){
-    for (j = 0; j < data_length; ++j){
-      write_file_buffer[j] = data[j];
+  if(ros_output_sample_rate == rosjack_sample_rate){
+    switch(output_type){
+      case ROSJACK_OUT_BOTH:{
+        jack_msgs::JackAudio out;
+        out.size = data_length;
+        ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+        out.header.stamp = win_stamp;
+        rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length); 
+        for (j = 0; j < data_length; ++j){
+          out.data.push_back(data_out[j]);
+          out_j[j] = data_out[j];
+          if(fabs(data_out[j]) >= 1.0){
+            ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+          }
+        }
+        rosjack_out.publish(out);
+      }break;
+      
+      case ROSJACK_OUT_JACK:{
+        rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
+        for (j = 0; j < data_length; ++j){
+          out_j[j] = data_out[j];
+          if(fabs(data_out[j]) >= 1.0){
+            ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+          }
+        }
+      }break;
+      
+      case ROSJACK_OUT_ROS:{
+        jack_msgs::JackAudio out;
+        out.size = data_length;
+        ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+        out.header.stamp = win_stamp;
+        for (j = 0; j < data_length; ++j){
+          out.data.push_back(data_out[j]);
+          if(fabs(data_out[j]) >= 1.0){
+            ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+          }
+        }
+        rosjack_out.publish(out);
+      }break;
     }
-    write_file_count = sf_write_float(audio_file,write_file_buffer,data_length);
+    
+    if(write_file){
+      for (j = 0; j < data_length; ++j){
+        write_file_buffer[j] = data_out[j];
+      }
+      write_file_count = sf_write_float(audio_file,write_file_buffer,data_length);
+    }
+  }else{
+    convert_to_sample_rate(data_out,data_length);
+    
+    switch(output_type){
+      case ROSJACK_OUT_BOTH:{
+        if(write_file){
+          if(convert_to_sample_rate_ready(data_length)){
+            jack_msgs::JackAudio out;
+            out.size = data_length;
+            ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+            out.header.stamp = win_stamp;
+            rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length); 
+            for (j = 0; j < data_length; ++j){
+              out.data.push_back(samplerate_circbuff[samplerate_circbuff_r]);
+              write_file_buffer[j] = samplerate_circbuff[samplerate_circbuff_r];
+              samplerate_circbuff_r++;
+              if(samplerate_circbuff_r >= samplerate_circbuff_size)
+                samplerate_circbuff_r = 0;
+              
+              out_j[j] = data_out[j];
+              if(fabs(data_out[j]) >= 1.0){
+                ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+              }
+            }
+            rosjack_out.publish(out);
+            write_file_count = sf_write_float(audio_file,write_file_buffer,data_length);
+          }else{
+            rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
+            for (j = 0; j < data_length; ++j){
+              out_j[j] = data_out[j];
+              if(fabs(data_out[j]) >= 1.0){
+                ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+              }
+            }
+          }
+        }else{
+          if(convert_to_sample_rate_ready(data_length)){
+            jack_msgs::JackAudio out;
+            out.size = data_length;
+            ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+            out.header.stamp = win_stamp;
+            rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length); 
+            for (j = 0; j < data_length; ++j){
+              out.data.push_back(samplerate_circbuff[samplerate_circbuff_r]);
+              samplerate_circbuff_r++;
+              if(samplerate_circbuff_r >= samplerate_circbuff_size)
+                samplerate_circbuff_r = 0;
+              
+              out_j[j] = data_out[j];
+              if(fabs(data_out[j]) >= 1.0){
+                ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+              }
+            }
+            rosjack_out.publish(out);
+          }else{
+            rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
+            for (j = 0; j < data_length; ++j){
+              out_j[j] = data_out[j];
+              if(fabs(data_out[j]) >= 1.0){
+                ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+              }
+            }
+          }
+        }
+      }break;
+      
+      case ROSJACK_OUT_JACK:{
+        rosjack_data *out_j = (rosjack_data *)jack_port_get_buffer (jack_output_port, data_length);
+        for (j = 0; j < data_length; ++j){
+          out_j[j] = data_out[j];
+          if(fabs(data_out[j]) >= 1.0){
+            ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+          }
+        }
+        
+        if(write_file){
+          for (j = 0; j < data_length; ++j){
+            write_file_buffer[j] = data_out[j];
+          }
+          write_file_count = sf_write_float(audio_file,write_file_buffer,data_length);
+        }
+      }break;
+      
+      case ROSJACK_OUT_ROS:{
+        if(write_file){
+          if(convert_to_sample_rate_ready(data_length)){
+            jack_msgs::JackAudio out;
+            out.size = data_length;
+            ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+            out.header.stamp = win_stamp;
+            for (j = 0; j < data_length; ++j){
+              out.data.push_back(samplerate_circbuff[samplerate_circbuff_r]);
+              write_file_buffer[j] = samplerate_circbuff[samplerate_circbuff_r];
+              samplerate_circbuff_r++;
+              if(samplerate_circbuff_r >= samplerate_circbuff_size)
+                samplerate_circbuff_r = 0;
+              
+              if(fabs(data_out[j]) >= 1.0){
+                ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+              }
+            }
+            rosjack_out.publish(out);
+            write_file_count = sf_write_float(audio_file,write_file_buffer,data_length);
+          }
+        }else{
+          if(convert_to_sample_rate_ready(data_length)){
+            jack_msgs::JackAudio out;
+            out.size = data_length;
+            ros::Time win_stamp((double)jack_last_frame_time(jack_client)/rosjack_sample_rate);
+            out.header.stamp = win_stamp;
+            for (j = 0; j < data_length; ++j){
+              out.data.push_back(samplerate_circbuff[samplerate_circbuff_r]);
+              samplerate_circbuff_r++;
+              if(samplerate_circbuff_r >= samplerate_circbuff_size)
+                samplerate_circbuff_r = 0;
+              
+              if(fabs(data_out[j]) >= 1.0){
+                ROS_WARN("Audio output out of [-1,1] range: %f",fabs(data_out[j]));
+              }
+            }
+            rosjack_out.publish(out);
+          }
+        }
+      }break;
+    }
   }
 }
 

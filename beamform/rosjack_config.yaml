@@ -6,3 +6,4 @@ output_type: 0
 write_file: false
 write_file_path: ''
 write_xrun: false
+ros_output_sample_rate: 48000
