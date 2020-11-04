@@ -9,11 +9,23 @@
 #include <vector>
 #include <cmath>
 
-bool READY = false;
+// Include FFTW header
+#include <complex>
+#include <fftw3.h>
 
-void apply_weights (rosjack_data *in, rosjack_data *out, int mic){
-    for(int i = 0; i < fft_win; i++){
-        out[i] = in[i]*hann_win[i];
+bool READY = false;
+std::complex<double> * x;
+
+void apply_weights (jack_ringbuffer_t *in, rosjack_data *out, int mic){
+    int j;
+    
+    overlap_and_add_prepare_input(in, x);
+    
+    for (j = 0; j<fft_win; j++){
+        out[j] = real(x[j]);
+        
+        //applying wola to avoid discontinuities in the time domain
+        out[j] *= hann_win_wola[j];
     }
 }
 
@@ -61,6 +73,8 @@ int main (int argc, char *argv[]) {
     
     std::cout << "Pre-allocating space for internal buffers." << std::endl;
     prepare_overlap_and_add_bymic(); //fft_win is assinged here
+    
+    x = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_win);
     
     READY = true;
     

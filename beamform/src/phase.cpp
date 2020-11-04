@@ -67,7 +67,7 @@ double get_overall_phase_diff(int min_i,int *num_i){
     }
 }
 
-void apply_weights (rosjack_data **in, rosjack_data *out){
+void apply_weights (jack_ringbuffer_t **in, rosjack_data *out){
     int i,j;
     double phase_diff_sum;
     int phase_diff_num;
@@ -77,9 +77,7 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
     
     // fft
     for(i = 0; i < number_of_microphones; i++){
-        for(j = 0; j < fft_win; j++){
-            x_time[j] = in[i][j]*hann_win[j];
-        }
+        overlap_and_add_prepare_input(in[i], x_time);
         fftw_execute(x_forward);
         for(j = 0; j < fft_win; j++){
             in_fft(i,j) = x_fft[j];
@@ -132,12 +130,7 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
     fftw_execute(y_inverse);
     
     // preparing output
-    for (j = 0; j<fft_win; j++){
-        // fftw3 does an unnormalized ifft that requires this normalization
-        out[j] = real(y_time[j])/(double)fft_win;
-        //applying wola to avoid discontinuities in the time domain
-        out[j] *= hann_win_wola[j];
-    }
+    overlap_and_add_prepare_output(y_time,out);
 }
 
 int jack_callback (jack_nframes_t nframes, void *arg){

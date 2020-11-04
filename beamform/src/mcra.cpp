@@ -61,7 +61,7 @@ double min (double a, double b){
     }
 }
 
-void mcra (rosjack_data **in, rosjack_data *out){
+void mcra (jack_ringbuffer_t **in, rosjack_data *out){
     
     int i,j,this_j;
     double this_mag, this_pha;
@@ -70,9 +70,7 @@ void mcra (rosjack_data **in, rosjack_data *out){
     
     // fft
     //only uses the first channel;
-    for(j = 0; j < fft_win; j++){
-        x_time[j] = in[0][j]*hann_win[j];
-    }
+    overlap_and_add_prepare_input(in[0], x_time);
     fftw_execute(x_forward);
     for(j = 0; j < fft_win; j++){
         in_fft(0,j) = x_fft[j];
@@ -153,13 +151,7 @@ void mcra (rosjack_data **in, rosjack_data *out){
     fftw_execute(y_inverse);
 
     // preparing output
-    for (j = 0; j<fft_win; j++){
-        // fftw3 does an unnormalized ifft that requires this normalization
-        out[j] = (real(y_time[j])/(double)fft_win)/number_of_microphones;
-        //applying wola to avoid discontinuities in the time domain
-        out[j] *= hann_win_wola[j];
-    }
-    
+    overlap_and_add_prepare_output(y_time,out);
 }
 
 int jack_callback (jack_nframes_t nframes, void *arg){

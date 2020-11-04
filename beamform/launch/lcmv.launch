@@ -4,10 +4,10 @@
     <rosparam command="load" file="$(find beamform)/beamform_config.yaml" />
     <rosparam>
       past_windows: 10
-      freq_mag_threshold: 0.005
-      freq_max: 4000
-      freq_min: 1
-      out_amp: 5.0
+      freq_mag_threshold: 0.001
+      freq_max: 16000
+      freq_min: 100
+      out_amp: 1.0
       interf_angle_threshold: 1.0
     </rosparam>
   </node>

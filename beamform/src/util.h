@@ -7,6 +7,9 @@
 #include <vector>
 #include <cmath>
 
+//for rinbbuffer handling
+#include <jack/ringbuffer.h>
+
 //to measure execution time
 #include <chrono>
 typedef std::chrono::high_resolution_clock::time_point TimeVar;
@@ -33,18 +36,19 @@ std::vector< std::map<std::string,double> > array_geometry;
 std::vector< double > interference_angles;
 
 //overlap-and-add stuff
-unsigned int num_fftwindows = 2;
+// it carries out a 50% hop across the board
 double *hann_win;
 double *hann_win_wola;
-rosjack_data **in_buff;
+double hann_compensate;
+jack_ringbuffer_t **in_buff;
 rosjack_data **out_buff;
 rosjack_data ***out_buff_mic;
 rosjack_data **out_buff_mic_arg;
+rosjack_data *out_buff_switch_tmp;
 unsigned int out_buff_mic_arg_size;
-unsigned int past_out_windows;
-unsigned int out_buff_ini_shift;
-unsigned int out_buff_last_shift;
 unsigned int fft_win;
+jack_ringbuffer_data_t *readring;
+unsigned int bytes_nframes;
 
 void handle_params(ros::NodeHandle *n){
     if ((home_path = getenv("HOME")) == NULL) {
@@ -224,201 +228,249 @@ void prepare_hann(){
     for (i = 0; i < fft_win; ++i){
         hann_sum += hann_win[i]*hann_win_wola[i];
     }
-    double hann_compensate = (((double)fft_win)/2)/hann_sum;
-    for (i = 0; i < fft_win; ++i){
-        hann_win_wola[i] *= hann_compensate;
+    hann_compensate = ((double)rosjack_window_size)/hann_sum;
+    std::cout << "Hann compensation: " << hann_compensate << std::endl;
+}
+
+void overlap_and_add_prepare_input(jack_ringbuffer_t *data, std::complex<double> *x){
+    rosjack_data * buf;
+    int buf_len, j;
+    int i = 0;
+    
+    jack_ringbuffer_get_read_vector	(data,readring);
+
+    // reconstructing current window from ring buffer data:
+    //    it is built by two jack_ringbuffer_data_t-s, each with:
+    //              len: bytes that are occupied
+    //              buf: data to be read
+    //    each jack_ringbuffer_data_t stores the 1st and 2nd "chunks"
+    //    of data from the ringbuffer
+
+    // extracting data from first "chunk" of ringbuffer
+    buf = (rosjack_data*)(readring[0].buf);
+    buf_len = (readring[0].len)/sizeof(jack_default_audio_sample_t);
+    for(j=0; j < buf_len; ++i,++j)
+      x[i] = buf[j]*hann_win[i]; //applying hann
+    
+    // extracting data from second "chunk" of ringbuffer
+    buf = (rosjack_data*)(readring[1].buf);
+    buf_len = (readring[1].len)/sizeof(jack_default_audio_sample_t);
+    for(j=0; j < buf_len; ++i,++j)
+      x[i] = buf[j]*hann_win[i]; //applying hann
+}
+
+void overlap_and_add_prepare_output(std::complex<double> *y, rosjack_data *out){
+    int j;
+    
+    for (j = 0; j<fft_win; j++){
+        // fftw3 does an unnormalized ifft that requires this normalization
+        out[j] = real(y[j])/(double)fft_win;
+        //applying wola to avoid discontinuities in the time domain
+        out[j] *= hann_win_wola[j];
     }
 }
 
 //fft_win is assigned here
 //run before allocating buffers any other buffers
 void prepare_overlap_and_add(){
-    int i;
+    int i,j;
+    rosjack_data zero_rosjack = 0.0;
     
-    fft_win = rosjack_window_size*num_fftwindows;
-    past_out_windows = (int)(num_fftwindows/2)+1;
-    out_buff_ini_shift = (int)((double)rosjack_window_size);
-    out_buff_last_shift = 0;
-    
-    printf("Overlap Info:\n");
-    printf("\t Start index of first window: %d\n",out_buff_ini_shift);
-    printf("\t Start index of last window : %d\n",out_buff_last_shift);
+    fft_win = rosjack_window_size*2;
     
     prepare_hann();
     
-    in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
+    in_buff = (jack_ringbuffer_t **) malloc (sizeof(jack_ringbuffer_t*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; ++i){
-        in_buff[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+        // preparing the ring buffer
+        //   jack_ringbuffer_t requires at least one sample between read and write pointers
+        //   this is solved by using one addittional sample of memory
+        //   if not, it will not provide the whole set of samples when reading from it
+        //   which introduces problems when FFTW3 requires the full set
+        in_buff[i] = jack_ringbuffer_create((fft_win+1)*sizeof(rosjack_data));
+        jack_ringbuffer_reset(in_buff[i]); //resetting both read and write pointers
+        
+        // advancing and filling the ring buffer with zeros for one nframe
+        for(j = 0; j < rosjack_window_size; ++j)
+          jack_ringbuffer_write(in_buff[i],(char*)&zero_rosjack,sizeof(rosjack_data));
     }
+  
+    // other bits relevant to ring buffer
+    bytes_nframes = rosjack_window_size*sizeof(rosjack_data);
+    readring = (jack_ringbuffer_data_t *)malloc(2 * sizeof(jack_ringbuffer_data_t));
     
-    out_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*past_out_windows);
-    for (i = 0; i < past_out_windows; ++i){
-        out_buff[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
-    }
+    out_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*2);
+    out_buff[0] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+    out_buff[1] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
 }
 
-void do_overlap(rosjack_data **in, rosjack_data *out, jack_nframes_t nframes, void (*weight_func)(rosjack_data **, rosjack_data *)){
+void do_overlap(rosjack_data **in, rosjack_data *out, jack_nframes_t nframes, void (*weight_func)(jack_ringbuffer_t **, rosjack_data *)){
     int i,j;
     
     for (i = 0; i < number_of_microphones; ++i){
-        //appending this window to input buffer
-        for(j = 0; j < nframes; ++j)
-            in_buff[i][j+(int)(nframes*(num_fftwindows-1))] = in[i][j];
+        //adding this window to input buffer
+        jack_ringbuffer_write(in_buff[i],(char*)in[i],bytes_nframes);
     }
     
     //applying weights and storing the filter output in out_buff
-    (*weight_func)(in_buff,out_buff[past_out_windows-1]);
+    (*weight_func)(in_buff,out_buff[1]);
     
     //doing overlap and storing in output
     for(j = 0; j < nframes; ++j)
-        out[j] = (out_buff[0][j+out_buff_ini_shift] + out_buff[past_out_windows-1][j+out_buff_last_shift]);
+        out[j] = (out_buff[0][j+nframes] + out_buff[1][j])*hann_compensate;
     
     //shifting input buffer one window
     for (i = 0; i < number_of_microphones; ++i){
-        for(j = 0;j < fft_win-nframes; ++j)
-            in_buff[i][j] = in_buff[i][j+nframes];
+        // advance ring buffer read pointer nframes
+        jack_ringbuffer_read_advance(in_buff[i],bytes_nframes);
     }
     
-    //shifting output buffer one window
-    rosjack_data *out_bff_tmp = out_buff[0];
-    for (i = 0; i < past_out_windows-1; ++i){
-        out_buff[i] = out_buff[i+1];
-    }
-    out_buff[past_out_windows-1] = out_bff_tmp;
+    //shifting output buffer windows
+    out_buff_switch_tmp = out_buff[0];
+    out_buff[0] = out_buff[1];
+    out_buff[1] = out_buff_switch_tmp;
 }
 
 //fft_win is assinged here
 //run before allocating buffers any other buffers
 void prepare_overlap_and_add_bymic(){
     int i,j;
-    
-    fft_win = rosjack_window_size*num_fftwindows;
-    past_out_windows = (int)(num_fftwindows/2)+1;
-    out_buff_ini_shift = (int)((double)rosjack_window_size);
-    out_buff_last_shift = 0;
-    
-    printf("Overlap By Mic, Info:\n");
-    printf("\t Start index of first window: %d\n",out_buff_ini_shift);
-    printf("\t Start index of last window : %d\n",out_buff_last_shift);
+    rosjack_data zero_rosjack = 0.0;
+
+    fft_win = rosjack_window_size*2;
     
     prepare_hann();
     
-    in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
+    in_buff = (jack_ringbuffer_t **) malloc (sizeof(jack_ringbuffer_t*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; ++i){
-        in_buff[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+        // preparing the ring buffer
+        //   jack_ringbuffer_t requires at least one sample between read and write pointers
+        //   this is solved by using one addittional sample of memory
+        //   if not, it will not provide the whole set of samples when reading from it
+        //   which introduces problems when FFTW3 requires the full set
+        in_buff[i] = jack_ringbuffer_create((fft_win+1)*sizeof(rosjack_data));
+        jack_ringbuffer_reset(in_buff[i]); //resetting both read and write pointers
+        
+        // advancing and filling the ring buffer with zeros for one nframe
+        for(j = 0; j < rosjack_window_size; ++j)
+          jack_ringbuffer_write(in_buff[i],(char*)&zero_rosjack,sizeof(rosjack_data));
     }
+  
+    // other bits relevant to ring buffer
+    bytes_nframes = rosjack_window_size*sizeof(rosjack_data);
+    readring = (jack_ringbuffer_data_t *)malloc(2 * sizeof(jack_ringbuffer_data_t));
     
     out_buff_mic = (rosjack_data ***) malloc (sizeof(rosjack_data**)*number_of_microphones);
     for (i = 0; i < number_of_microphones; ++i){
-        out_buff_mic[i] = (rosjack_data **) malloc (sizeof(rosjack_data*)*past_out_windows);
-        for (j = 0; j < past_out_windows; j++){
-            out_buff_mic[i][j] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
-        }
+        out_buff_mic[i] = (rosjack_data **) malloc (sizeof(rosjack_data*)*2);
+        out_buff_mic[i][0] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+        out_buff_mic[i][1] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     }
 }
 
-void do_overlap_bymic(rosjack_data **in, rosjack_data **out, jack_nframes_t nframes, void (*weight_func)(rosjack_data *, rosjack_data *, int)){
+void do_overlap_bymic(rosjack_data **in, rosjack_data **out, jack_nframes_t nframes, void (*weight_func)(jack_ringbuffer_t *, rosjack_data *, int)){
     int i,j;
     
     //doing overlap and add
     for (i = 0; i < number_of_microphones; ++i){
-      //appending this window to input buffer
-      for(j = 0; j < nframes; ++j)
-          in_buff[i][j+(int)(nframes*(num_fftwindows-1))] = in[i][j];
-      
-      //applying weights and storing the filter output in out_buff_mic[i]
-      (*weight_func)(in_buff[i],out_buff_mic[i][past_out_windows-1],i);
-      
-      //doing overlap and storing in output
-      for(j = 0; j < nframes; ++j)
-          out[i][j] = (out_buff_mic[i][0][j+out_buff_ini_shift] + out_buff_mic[i][past_out_windows-1][j+out_buff_last_shift]);
-      
-      //shifting output buffer one window
-      rosjack_data *out_bff_tmp = out_buff_mic[i][0];
-      for (j = 0; j < past_out_windows-1; ++j){
-          out_buff_mic[i][j] = out_buff_mic[i][j+1];
-      }
-      out_buff_mic[i][past_out_windows-1] = out_bff_tmp;
+        //adding this window to input buffer
+        jack_ringbuffer_write(in_buff[i],(char*)in[i],bytes_nframes);
+        
+        //applying weights and storing the filter output in out_buff_mic[i]
+        (*weight_func)(in_buff[i],out_buff_mic[i][1],i);
+        
+        //doing overlap and storing in output
+        for(j = 0; j < nframes; ++j)
+            out[i][j] = (out_buff_mic[i][0][j+nframes] + out_buff_mic[i][1][j])*hann_compensate;
+        
+        //shifting output buffer one window
+        out_buff_switch_tmp = out_buff_mic[i][0];
+        out_buff_mic[i][0] = out_buff_mic[i][1];
+        out_buff_mic[i][1] = out_buff_switch_tmp;
     }
     
     //shifting in_overlap buffer
     for (i = 0; i < number_of_microphones; ++i){
-        for(j = 0;j < fft_win-nframes; ++j)
-            in_buff[i][j] = in_buff[i][j+nframes];
+        // advance ring buffer read pointer nframes
+        jack_ringbuffer_read_advance(in_buff[i],bytes_nframes);
     }
 }
 //fft_win is assinged here
 //run before allocating buffers any other buffers
 void prepare_overlap_and_add_multi(int out_channels){
     int i,j;
-    
+    rosjack_data zero_rosjack = 0.0;
+
     out_buff_mic_arg_size = out_channels;
     
-    fft_win = rosjack_window_size*num_fftwindows;
-    past_out_windows = (int)(num_fftwindows/2)+1;
-    out_buff_ini_shift = (int)((double)rosjack_window_size);
-    out_buff_last_shift = 0;
-    
-    printf("Overlap Multi, Info:\n");
-    printf("\t Start index of first window: %d\n",out_buff_ini_shift);
-    printf("\t Start index of last window : %d\n",out_buff_last_shift);
+    fft_win = rosjack_window_size*2;
     
     prepare_hann();
     
-    in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
+    in_buff = (jack_ringbuffer_t **) malloc (sizeof(jack_ringbuffer_t*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; ++i){
-        in_buff[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+        // preparing the ring buffer
+        //   jack_ringbuffer_t requires at least one sample between read and write pointers
+        //   this is solved by using one addittional sample of memory
+        //   if not, it will not provide the whole set of samples when reading from it
+        //   which introduces problems when FFTW3 requires the full set
+        in_buff[i] = jack_ringbuffer_create((fft_win+1)*sizeof(rosjack_data));
+        jack_ringbuffer_reset(in_buff[i]); //resetting both read and write pointers
+        
+        // advancing and filling the ring buffer with zeros for one nframe
+        for(j = 0; j < rosjack_window_size; ++j)
+          jack_ringbuffer_write(in_buff[i],(char*)&zero_rosjack,sizeof(rosjack_data));
     }
+  
+    // other bits relevant to ring buffer
+    bytes_nframes = rosjack_window_size*sizeof(rosjack_data);
+    readring = (jack_ringbuffer_data_t *)malloc(2 * sizeof(jack_ringbuffer_data_t));
     
     out_buff_mic = (rosjack_data ***) malloc (sizeof(rosjack_data**)*out_channels);
     out_buff_mic_arg = (rosjack_data **) malloc (sizeof(rosjack_data*)*out_channels);
     for (i = 0; i < out_channels; ++i){
-        out_buff_mic[i] = (rosjack_data **) malloc (sizeof(rosjack_data*)*past_out_windows);
+        out_buff_mic[i] = (rosjack_data **) malloc (sizeof(rosjack_data*)*2);
         out_buff_mic_arg[i] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
-        for (j = 0; j < past_out_windows; ++j){
-            out_buff_mic[i][j] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
-        }
+        out_buff_mic[i][0] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
+        out_buff_mic[i][1] = (rosjack_data *) calloc (fft_win,sizeof(rosjack_data));
     }
 }
 
-void do_overlap_multi(rosjack_data **in, rosjack_data **out, jack_nframes_t nframes, void (*weight_func)(rosjack_data **, rosjack_data **)){
+void do_overlap_multi(rosjack_data **in, rosjack_data **out, jack_nframes_t nframes, void (*weight_func)(jack_ringbuffer_t **, rosjack_data **)){
     int i,j;
     
     for (i = 0; i < number_of_microphones; ++i){
-        //appending this window to input buffer
-        for(j = 0; j < nframes; ++j)
-            in_buff[i][j+(int)(nframes*(num_fftwindows-1))] = in[i][j];
+        //adding this window to input buffer
+        jack_ringbuffer_write(in_buff[i],(char*)in[i],bytes_nframes);
     }
     
     //applying weights and storing the filter output in out_buff_mic_arg
     (*weight_func)(in_buff,out_buff_mic_arg);
     
-    //copying out_buff_mic_arg out_buff_mic[:][past_out_windows-1]
+    //copying out_buff_mic_arg to out_buff_mic[:][1]
     for (i = 0; i < out_buff_mic_arg_size; ++i){
         for (j = 0; j < fft_win; ++j){
-            out_buff_mic[i][past_out_windows-1][j] = out_buff_mic_arg[i][j];
+            out_buff_mic[i][1][j] = out_buff_mic_arg[i][j];
         }
     }
     
     //doing overlap and storing in output
     for (i = 0; i < out_buff_mic_arg_size; ++i){
         for(j = 0; j < nframes; ++j)
-            out[i][j] = (out_buff_mic[i][0][j+out_buff_ini_shift] + out_buff_mic[i][past_out_windows-1][j+out_buff_last_shift]);
+            out[i][j] = (out_buff_mic[i][0][j+nframes] + out_buff_mic[i][1][j])*hann_compensate;
     }
     
     //shifting input buffer one window
     for (i = 0; i < number_of_microphones; ++i){
-        for(j = 0;j < fft_win-nframes; ++j)
-            in_buff[i][j] = in_buff[i][j+nframes];
+        // advance ring buffer read pointer nframes
+        jack_ringbuffer_read_advance(in_buff[i],bytes_nframes);
     }
     
     //shifting output buffer one window
     for (i = 0; i < out_buff_mic_arg_size; ++i){
-        rosjack_data *out_bff_tmp = out_buff_mic[i][0];
-        for (j = 0; j < past_out_windows-1; ++j){
-            out_buff_mic[i][j] = out_buff_mic[i][j+1];
-        }
-        out_buff_mic[i][past_out_windows-1] = out_bff_tmp;
+        out_buff_switch_tmp = out_buff_mic[i][0];
+        out_buff_mic[i][0] = out_buff_mic[i][1];
+        out_buff_mic[i][1] = out_buff_switch_tmp;
     }
 }
 

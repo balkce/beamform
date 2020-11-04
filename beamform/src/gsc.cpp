@@ -51,13 +51,11 @@ void update_weights(bool ini=false){
     }
 }
 
-void apply_weights (rosjack_data *in, rosjack_data *out, int mic){
+void apply_weights (jack_ringbuffer_t *in, rosjack_data *out, int mic){
     int i;
     
     // fft
-    for(i = 0; i < fft_win; i++){
-        x_time[i] = in[i]*hann_win[i];
-    }
+    overlap_and_add_prepare_input(in, x_time);
     fftw_execute(x_forward);
     
     // applying weights per frequency
@@ -73,12 +71,7 @@ void apply_weights (rosjack_data *in, rosjack_data *out, int mic){
     fftw_execute(y_inverse);
     
     // preparing output
-    for (i = 0; i<fft_win; i++){
-        // fftw3 does an unnormalized ifft that requires this normalization
-        out[i] = real(y_time[i])/(double)fft_win;
-        //applying wola to avoid discontinuities in the time domain
-        out[i] *= hann_win_wola[i];
-    }
+    overlap_and_add_prepare_output(y_time,out);
 }
 
 void shift_data(rosjack_data data, rosjack_data *buf, int size){
