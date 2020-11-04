@@ -76,6 +76,8 @@ void apply_weights (rosjack_data *in, rosjack_data *out, int mic){
     for (i = 0; i<fft_win; i++){
         // fftw3 does an unnormalized ifft that requires this normalization
         out[i] = real(y_time[i])/(double)fft_win;
+        //applying wola to avoid discontinuities in the time domain
+        out[i] *= hann_win_wola[i];
     }
 }
 
@@ -87,11 +89,12 @@ void shift_data(rosjack_data data, rosjack_data *buf, int size){
 }
 
 rosjack_data calculate_power(rosjack_data *buf, int size){
-  rosjack_data p = 0;
+  rosjack_data p = 0.0;
   for(int i = 0; i < size; i++){
     p += buf[i]*buf[i];
   }
-  return p;
+  p /= (rosjack_data)size;
+  return sqrt(p);
 }
 
 int jack_callback (jack_nframes_t nframes, void *arg){
@@ -111,31 +114,31 @@ int jack_callback (jack_nframes_t nframes, void *arg){
         
         rosjack_data **overlap_out; //needs to be dynamically allocated to be used by do_overlap_bymic
         overlap_out = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
-        for (i = 0; i < number_of_microphones; i++){
+        for (i = 0; i < number_of_microphones; ++i){
             overlap_out[i] = (rosjack_data *) calloc (nframes,sizeof(rosjack_data));
         }
         
-        for(j = 0;j < nframes; j++)
+        for(j = 0;j < nframes; ++j)
           out[j] = 0.0;
         
         do_overlap_bymic(in, overlap_out, nframes, apply_weights);
         
         //doing GSC for each sample
-        for(j = 0; j < nframes; j++){
+        for(j = 0; j < nframes; ++j){
           //doing the upper beamform
           das_out = 0.0;
-          for (i = 0; i < number_of_microphones; i++)
+          for (i = 0; i < number_of_microphones; ++i)
             das_out += overlap_out[i][j];
           das_out /= number_of_microphones;
           
           out[j] = das_out;
-          for (i = 0; i < number_of_microphones-1; i++){
+          for (i = 0; i < number_of_microphones-1; ++i){
             //blocking matrix
             shift_data(overlap_out[i+1][j]-overlap_out[i][j],block_matrix[i],filter_size);
             
             //applying filters
             block_out = 0.0;
-            for(k = 0; k < filter_size; k++){
+            for(k = 0; k < filter_size; ++k){
               block_out += filter[i][k]*block_matrix[i][k];
             }
             
@@ -158,11 +161,12 @@ int jack_callback (jack_nframes_t nframes, void *arg){
               }else{
                 this_mu = mu0/block_power;
               }
+              
               if(std::isnan(this_mu) || std::isinf(this_mu))
                 this_mu = 0.0;
               
               //applying mu to filter update
-              for(k = 0; k < filter_size; k++){
+              for(k = 0; k < filter_size; ++k){
                 filter[i][k] += this_mu*out[j]*block_matrix[i][k];
                 
                 //important NaN check

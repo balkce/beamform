@@ -33,8 +33,9 @@ std::vector< std::map<std::string,double> > array_geometry;
 std::vector< double > interference_angles;
 
 //overlap-and-add stuff
-unsigned int num_fftwindows = 4; //must be a power of 2
+unsigned int num_fftwindows = 2;
 double *hann_win;
+double *hann_win_wola;
 rosjack_data **in_buff;
 rosjack_data **out_buff;
 rosjack_data ***out_buff_mic;
@@ -206,6 +207,29 @@ double* create_hann_winn (unsigned int h_size){
     return h;
 }
 
+double* create_hann_winn_wola (unsigned int h_size){
+    static double *h = (double *) malloc(sizeof(double) * h_size);
+    for (int i = 0; i < h_size; ++i){
+        h[i] = sqrt(hann(i, h_size));
+    }
+    return h;
+}
+
+void prepare_hann(){
+    int i;
+    hann_win = create_hann_winn (fft_win);
+    hann_win_wola = create_hann_winn_wola (fft_win);
+    
+    double hann_sum = 0;
+    for (i = 0; i < fft_win; ++i){
+        hann_sum += hann_win[i]*hann_win_wola[i];
+    }
+    double hann_compensate = (((double)fft_win)/2)/hann_sum;
+    for (i = 0; i < fft_win; ++i){
+        hann_win_wola[i] *= hann_compensate;
+    }
+}
+
 //fft_win is assigned here
 //run before allocating buffers any other buffers
 void prepare_overlap_and_add(){
@@ -213,14 +237,14 @@ void prepare_overlap_and_add(){
     
     fft_win = rosjack_window_size*num_fftwindows;
     past_out_windows = (int)(num_fftwindows/2)+1;
-    out_buff_ini_shift = (int)((double)fft_win*3/4)-(int)((double)rosjack_window_size/2);//rosjack_window_size*2.5;
-    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);
+    out_buff_ini_shift = (int)((double)rosjack_window_size);
+    out_buff_last_shift = 0;
     
     printf("Overlap Info:\n");
     printf("\t Start index of first window: %d\n",out_buff_ini_shift);
     printf("\t Start index of last window : %d\n",out_buff_last_shift);
     
-    hann_win = create_hann_winn (fft_win);
+    prepare_hann();
     
     in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; ++i){
@@ -270,17 +294,14 @@ void prepare_overlap_and_add_bymic(){
     
     fft_win = rosjack_window_size*num_fftwindows;
     past_out_windows = (int)(num_fftwindows/2)+1;
-    out_buff_ini_shift = (int)((double)fft_win*3/4)-(int)((double)rosjack_window_size/2);//rosjack_window_size*2.5;
-    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);
+    out_buff_ini_shift = (int)((double)rosjack_window_size);
+    out_buff_last_shift = 0;
     
     printf("Overlap By Mic, Info:\n");
     printf("\t Start index of first window: %d\n",out_buff_ini_shift);
     printf("\t Start index of last window : %d\n",out_buff_last_shift);
     
-    hann_win = (double *) malloc(sizeof(double) * fft_win);
-    for (i = 0; i < fft_win; ++i){
-        hann_win[i] = hann(i, fft_win);
-    }
+    prepare_hann();
     
     in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; ++i){
@@ -335,17 +356,14 @@ void prepare_overlap_and_add_multi(int out_channels){
     
     fft_win = rosjack_window_size*num_fftwindows;
     past_out_windows = (int)(num_fftwindows/2)+1;
-    out_buff_ini_shift = (int)((double)fft_win*3/4)-(int)((double)rosjack_window_size/2);//rosjack_window_size*2.5;
-    out_buff_last_shift = (int)((double)fft_win/4)-(int)((double)rosjack_window_size/2);
+    out_buff_ini_shift = (int)((double)rosjack_window_size);
+    out_buff_last_shift = 0;
     
     printf("Overlap Multi, Info:\n");
     printf("\t Start index of first window: %d\n",out_buff_ini_shift);
     printf("\t Start index of last window : %d\n",out_buff_last_shift);
     
-    hann_win = (double *) malloc(sizeof(double) * fft_win);
-    for (i = 0; i < fft_win; ++i){
-        hann_win[i] = hann(i, fft_win);
-    }
+    prepare_hann();
     
     in_buff = (rosjack_data **) malloc (sizeof(rosjack_data*)*number_of_microphones);
     for (i = 0; i < number_of_microphones; ++i){

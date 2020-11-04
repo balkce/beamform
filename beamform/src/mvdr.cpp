@@ -75,7 +75,8 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
     }
     
     //applying weights
-    for(j = 0; j < fft_win; j++){
+    y_fft[0] = in_fft(0,0);
+    for(j = 1; j < fft_win; j++){
         this_freq = abs(freqs[j]);
         this_mag = 0.0;
         for(i = 0; i < number_of_microphones; i++)
@@ -112,6 +113,8 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
     for (j = 0; j<fft_win; j++){
         // fftw3 does an unnormalized ifft that requires this normalization
         out[j] = (real(y_time[j])/(double)fft_win)*out_amp;
+        //applying wola to avoid discontinuities in the time domain
+        out[j] *= hann_win_wola[j];
     }
 }
 

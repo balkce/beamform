@@ -21,23 +21,14 @@ double *freqs;
 double *delays;
 Eigen::MatrixXcd weights;
 
-double min_mag = 0.0001;
+double mag_mult = 0.0001;
+double mag_threshold = 0.0001;
 double min_phase = 10;
 double min_phase_diff_mean = 10*M_PI/180;
-int smooth_size = 10;
-double past_out = 0.0;
 
 //reused buffers
 double *phases_aligned;
-double *past_samples;
 Eigen::MatrixXcd in_fft;
-
-void shift_data(double data, double *buf, int size){
-  for(int i = 1; i < size; i++){
-    buf[i-1] = buf[i];
-  }
-  buf[size-1] = data;
-}
 
 void update_weights(bool ini=false){
     calculate_delays(delays);
@@ -76,16 +67,6 @@ double get_overall_phase_diff(int min_i,int *num_i){
     }
 }
 
-double get_mean(double * data, int data_size){
-    double data_sum = 0.0;
-    
-    for(int i = 0; i < data_size; i++){
-        data_sum += data[i];
-    }
-    
-    return data_sum/(double)data_size;
-}
-
 void apply_weights (rosjack_data **in, rosjack_data *out){
     int i,j;
     double phase_diff_sum;
@@ -106,17 +87,8 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
     }
     
     y_fft[0] = in_fft(0,0);
+    
     for(j = 1; j < fft_win; j++){
-        //applying weights to align phases
-        for(i = 0; i < number_of_microphones; i++){
-          phases_aligned[i] = arg(conj(weights(i,j))*in_fft(i,j));
-        }
-        
-        //getting the mean phase difference between all microphones
-        phase_diff_num = 0;
-        phase_diff_sum = get_overall_phase_diff(0,&phase_diff_num);
-        phase_diff_mean = phase_diff_sum/(double)phase_diff_num;
-        
         //creating new frequency data bin from mean magnitude
         mag_mean = 0;
         for(i = 0; i < number_of_microphones; i++){
@@ -124,17 +96,33 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
         }
         mag_mean /= number_of_microphones;
         
-        //and from the phase of the reference microphone
+        //and getting the phase of the reference microphone
         pha_mean = arg(in_fft(0,j));
         
-        
-        if (phase_diff_mean < min_phase_diff_mean){
-            y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
+        if (mag_mean/fft_win > mag_threshold){
+          //applying weights to align phases
+          for(i = 0; i < number_of_microphones; i++){
+            phases_aligned[i] = arg(conj(weights(i,j))*in_fft(i,j));
+          }
+          
+          //getting the mean phase difference between all microphones
+          phase_diff_num = 0;
+          phase_diff_sum = get_overall_phase_diff(0,&phase_diff_num);
+          phase_diff_mean = phase_diff_sum/(double)phase_diff_num;
+          
+          pha_mean = arg(in_fft(0,j));
+          
+          
+          if (phase_diff_mean < min_phase_diff_mean){
+              y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
+          }else{
+              mag_mean *= mag_mult;
+              y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
+          }
         }else{
-            mag_mean *= min_mag;
-            y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
+          mag_mean *= mag_mult;
+          y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
         }
-        
         
         //mag_mean *= 1 / (1+(15.0)*phase_diff_mean); // 15.0 here is a constant that is linked to the minimum phase difference
         //y_fft[j] = std::complex<double>(mag_mean*cos(pha_mean),mag_mean*sin(pha_mean));
@@ -147,6 +135,8 @@ void apply_weights (rosjack_data **in, rosjack_data *out){
     for (j = 0; j<fft_win; j++){
         // fftw3 does an unnormalized ifft that requires this normalization
         out[j] = real(y_time[j])/(double)fft_win;
+        //applying wola to avoid discontinuities in the time domain
+        out[j] *= hann_win_wola[j];
     }
 }
 
@@ -159,13 +149,6 @@ int jack_callback (jack_nframes_t nframes, void *arg){
     if(READY){
         rosjack_data **in = input_from_rosjack (nframes);
         do_overlap(in, out, nframes, apply_weights);
-    
-        // this type of masking requires to smooth the output since it
-        // inserts many discontinuities in the time domain
-        for (j = 0; j<nframes; j++){
-            shift_data(out[j], past_samples,smooth_size);
-            out[j] = get_mean(past_samples,smooth_size);
-        }
     }else{
         for (i = 0; i < nframes; i++){
             out[i] = 0.0;
@@ -198,23 +181,20 @@ void phase_handle_params(ros::NodeHandle *n){
     }
     min_phase_diff_mean = min_phase*M_PI/180;
     
-    if ((*n).getParam(node_name+"/min_mag",min_mag)){
-        ROS_INFO("Min Mag Threshold: %f",min_mag);
+    if ((*n).getParam(node_name+"/mag_mult",mag_mult)){
+        ROS_INFO("Mag Multiplier: %f",mag_mult);
     }else{
-        min_mag = 10.0;
-        ROS_WARN("Min Mag Threshold argument not found in ROS param server, using default value (%f).",min_mag);
+        mag_mult = 0.1;
+        ROS_WARN("Mag Multiplier argument not found in ROS param server, using default value (%f).",mag_mult);
     }
     
-    if ((*n).getParam(node_name+"/smooth_size",smooth_size)){
-        ROS_INFO("Smooth Filter Size: %d",smooth_size);
-        if(smooth_size < 1){
-          smooth_size = 20;
-          ROS_WARN("Invalid Smooth Filter Size argument, using default value (%d).",smooth_size);
-        }
+    if ((*n).getParam(node_name+"/mag_threshold",mag_threshold)){
+        ROS_INFO("Mag Threshold: %f",mag_threshold);
     }else{
-        smooth_size = 20;
-        ROS_WARN("Smooth Filter Size argument not found in ROS param server, using default value (%d).",smooth_size);
+        mag_threshold = 0.05;
+        ROS_WARN("Mag Threshold argument not found in ROS param server, using default value (%f).",mag_threshold);
     }
+    
 }
 
 int main (int argc, char *argv[]) {
@@ -248,11 +228,6 @@ int main (int argc, char *argv[]) {
     
     freqs = (double *)malloc(sizeof(double)*fft_win);
     calculate_frequency_vector(freqs,fft_win);
-    
-    past_samples = (double *) malloc (sizeof(double)*smooth_size);
-    for (i = 0; i < smooth_size; i++){
-        past_samples[i] = 0.0;
-    }
     
     delays = (double *) malloc (sizeof(double)*number_of_microphones);
     phases_aligned = (double *) malloc (sizeof(double)*number_of_microphones);

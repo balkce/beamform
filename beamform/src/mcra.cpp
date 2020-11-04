@@ -156,6 +156,8 @@ void mcra (rosjack_data **in, rosjack_data *out){
     for (j = 0; j<fft_win; j++){
         // fftw3 does an unnormalized ifft that requires this normalization
         out[j] = (real(y_time[j])/(double)fft_win)/number_of_microphones;
+        //applying wola to avoid discontinuities in the time domain
+        out[j] *= hann_win_wola[j];
     }
     
 }
