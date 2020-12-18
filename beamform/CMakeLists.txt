@@ -20,6 +20,7 @@ catkin_package(
   CATKIN_DEPENDS roscpp rospy std_msgs jack_msgs message_runtime
 )
 
+
 INCLUDE(FindPkgConfig)
 pkg_check_modules (GLIB2 glib-2.0)
 message( "Found glib-2.0: " ${GLIB2_FOUND} )
