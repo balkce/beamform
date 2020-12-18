@@ -10,7 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 find_package(cmake_modules REQUIRED) # for Eigen
-find_package(Eigen REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 add_message_files(FILES InterfTheta.msg)
 
@@ -27,7 +27,7 @@ pkg_check_modules (JACK jack)
 message( "Found jack: " ${JACK_FOUND} )
 pkg_check_modules (FFTW fftw3)
 message( "Found fftw3: " ${FFTW_FOUND} )
-pkg_check_modules (EIGEN eigen)
+pkg_check_modules (EIGEN eigen3)
 message( "Found eigen: " ${EIGEN_FOUND} )
 pkg_check_modules (SNDFILE sndfile)
 message( "Found sndfile: " ${SNDFILE_FOUND} )
