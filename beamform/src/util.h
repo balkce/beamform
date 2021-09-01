@@ -199,7 +199,7 @@ void calculate_frequency_vector(double *freq_buffer, unsigned int freq_buffer_si
 }
 
 double hann(unsigned int buffer_i, unsigned int buffer_size){
-    return 0.5 - 0.5*cos(2*PI*buffer_i/(buffer_size-1));
+    return 0.5 - 0.5*cos(2*PI*buffer_i/(buffer_size)); //periodic hann with buffer_size, instead of symmetric with buffer_size-1
 }
 
 double* create_hann_winn (unsigned int h_size){
@@ -211,15 +211,7 @@ double* create_hann_winn (unsigned int h_size){
 }
 
 void prepare_hann(){
-    int i;
     hann_win = create_hann_winn (fft_win);
-    
-    double hann_sum = 0;
-    for (i = 0; i < fft_win; ++i){
-        hann_sum += hann_win[i]*hann_win[i];
-    }
-    hann_compensate = ((double)rosjack_window_size)/hann_sum;
-    std::cout << "Hann compensation: " << hann_compensate << std::endl;
 }
 
 void overlap_and_add_prepare_input(jack_ringbuffer_t *data, std::complex<double> *x){
@@ -307,7 +299,7 @@ void do_overlap(rosjack_data **in, rosjack_data *out, jack_nframes_t nframes, vo
     
     //doing overlap and storing in output
     for(j = 0; j < nframes; ++j)
-        out[j] = (out_buff[0][j+nframes] + out_buff[1][j])*hann_compensate;
+        out[j] = out_buff[0][j+nframes] + out_buff[1][j];
     
     //shifting input buffer one window
     for (i = 0; i < number_of_microphones; ++i){
@@ -371,7 +363,7 @@ void do_overlap_bymic(rosjack_data **in, rosjack_data **out, jack_nframes_t nfra
         
         //doing overlap and storing in output
         for(j = 0; j < nframes; ++j)
-            out[i][j] = (out_buff_mic[i][0][j+nframes] + out_buff_mic[i][1][j])*hann_compensate;
+            out[i][j] = out_buff_mic[i][0][j+nframes] + out_buff_mic[i][1][j];
         
         //shifting output buffer one window
         out_buff_switch_tmp = out_buff_mic[i][0];
@@ -447,7 +439,7 @@ void do_overlap_multi(rosjack_data **in, rosjack_data **out, jack_nframes_t nfra
     //doing overlap and storing in output
     for (i = 0; i < out_buff_mic_arg_size; ++i){
         for(j = 0; j < nframes; ++j)
-            out[i][j] = (out_buff_mic[i][0][j+nframes] + out_buff_mic[i][1][j])*hann_compensate;
+            out[i][j] = out_buff_mic[i][0][j+nframes] + out_buff_mic[i][1][j];
     }
     
     //shifting input buffer one window
