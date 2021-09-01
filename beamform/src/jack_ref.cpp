@@ -25,7 +25,7 @@ void apply_weights (jack_ringbuffer_t *in, rosjack_data *out, int mic){
         out[j] = real(x[j]);
         
         //applying wola to avoid discontinuities in the time domain
-        out[j] *= hann_win_wola[j];
+        out[j] *= hann_win[j];
     }
 }
 

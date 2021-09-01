@@ -38,7 +38,6 @@ std::vector< double > interference_angles;
 //overlap-and-add stuff
 // it carries out a 50% hop across the board
 double *hann_win;
-double *hann_win_wola;
 double hann_compensate;
 jack_ringbuffer_t **in_buff;
 rosjack_data **out_buff;
@@ -206,14 +205,6 @@ double hann(unsigned int buffer_i, unsigned int buffer_size){
 double* create_hann_winn (unsigned int h_size){
     static double *h = (double *) malloc(sizeof(double) * h_size);
     for (int i = 0; i < h_size; ++i){
-        h[i] = hann(i, h_size);
-    }
-    return h;
-}
-
-double* create_hann_winn_wola (unsigned int h_size){
-    static double *h = (double *) malloc(sizeof(double) * h_size);
-    for (int i = 0; i < h_size; ++i){
         h[i] = sqrt(hann(i, h_size));
     }
     return h;
@@ -222,11 +213,10 @@ double* create_hann_winn_wola (unsigned int h_size){
 void prepare_hann(){
     int i;
     hann_win = create_hann_winn (fft_win);
-    hann_win_wola = create_hann_winn_wola (fft_win);
     
     double hann_sum = 0;
     for (i = 0; i < fft_win; ++i){
-        hann_sum += hann_win[i]*hann_win_wola[i];
+        hann_sum += hann_win[i]*hann_win[i];
     }
     hann_compensate = ((double)rosjack_window_size)/hann_sum;
     std::cout << "Hann compensation: " << hann_compensate << std::endl;
@@ -266,7 +256,7 @@ void overlap_and_add_prepare_output(std::complex<double> *y, rosjack_data *out){
         // fftw3 does an unnormalized ifft that requires this normalization
         out[j] = real(y[j])/(double)fft_win;
         //applying wola to avoid discontinuities in the time domain
-        out[j] *= hann_win_wola[j];
+        out[j] *= hann_win[j];
     }
 }
 
