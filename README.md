@@ -1,6 +1,8 @@
 # beamform
 ROS package that carries out simple 1D beamforming strategies, using JACK as input/output audio server.
 
+This package will reach end-of-life when ROS Noetic does. There is a ROS2 version of this package that you can find in https://github.com/balkce/beamform2 that works with ROS2 Humble.
+
 It includes a custom ROS topic: JackAudio, defined in the package "jack_msgs". It also uses a custom API for communicating between ROS and JACK referenced as "rosjack", which is not to be confused with https://github.com/balkce/rosjack. Although both serve similar purposes, in this repository, rosjack is built as a library for ROS-JACK inter-operability, not as a ROS package.
 
 Included beamformers:
